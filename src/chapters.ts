@@ -144,7 +144,7 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     },
   })
   shakeBtn.addEventListener('click', () => {
-    pressure = Math.min(1, pressure + 0.22)
+    if (burst < 0) pressure = Math.min(1, pressure + 0.22)
   })
   // Touch: dragging on the chapter shakes too (pointer velocity covers it).
 
@@ -329,10 +329,11 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
 
     // Fizz pressure: pointer speed while the chapter is active.
     if (fizzActive && fizzP > 0.3 && fizzP < 0.95 && burst < 0) {
+      // Limit the gain per frame so one pointer jump can't fill the gauge.
       const speed = stage.pointer?.speed ?? 0
-      pressure += Math.max(0, speed - 250) * 0.00022 * dt * 60
+      pressure += Math.min(0.05, Math.max(0, speed - 250) * 0.00022 * dt * 60)
     }
-    pressure = Math.max(0, pressure - dt * 0.12)
+    pressure = clamp(pressure - dt * 0.12, 0, 1)
     if (pressure >= 1 && burst < 0) {
       burst = 0
       setHint(3)

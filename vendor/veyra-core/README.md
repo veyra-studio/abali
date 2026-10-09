@@ -10,11 +10,13 @@ import { createStage, scenePresets, splitText } from '@veyra/core'
 const stage = createStage()                       // one loop, smooth native scroll
 
 const title = splitText('h1', { type: 'chars' })   // Persian-safe letter splitting
-stage.animate(title.chars, { y: 0, opacity: 1 }, { stagger: 0.03 })
+stage.timeline()
+  .fromTo(title.chars, { y: '0.6em', opacity: 0 }, { y: '0em', opacity: 1 }, { stagger: 0.03 })
+  .play()
 
 stage.scene('#story', {                           // scroll → progress
   ...scenePresets.pinned,                         // pinned with CSS sticky
-  onProgress: (p) => bottle.rotation.y = p * Math.PI * 2,
+  onProgress: (p) => (mesh.rotation.y = p * Math.PI * 2),  // e.g. a three.js mesh
 })
 ```
 
@@ -39,7 +41,7 @@ Live showcase: **[Abali](https://veyra-studio.github.io/abali/)** — a Persian,
 | **three.js** *(optional)* | `@veyra/core/three`: renderer on the stage loop, pixel-perfect camera (1 unit = 1 CSS px), DOM-anchored objects, and DOM text mirrored into textures with the browser's own line breaks. |
 | **Utilities** | `drawElementText` (real HTML text into a canvas, for Canvas2D/WebGL effects), `supportsWebGL2`, `toPersianDigits`, `inlineSign` and the math helpers (`range`, `damp`, `mapRange`, …). |
 
-Zero runtime dependencies. The whole core is ~13 KB min+gzip; three.js is an optional peer dependency used only through the `/three` entry point.
+Zero runtime dependencies. Everything in the core is ~19 KB min+gzip, and projects ship only what they import (the scroll-scenes example's engine chunk is ~13 KB). three.js is an optional peer dependency used only through the `/three` entry point.
 
 ## Install
 

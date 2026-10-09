@@ -163,6 +163,40 @@ try {
     await page.screenshot({ path: `${OUT}reduced-landscape.png` })
   })
 
+  await visit(browser, 'Interactions with sound on', { viewport: { width: 1280, height: 800 } }, async (page) => {
+    await page.click('.sound-toggle')
+    const pressed = await page.getAttribute('.sound-toggle', 'aria-pressed')
+    pressed === 'true' ? pass('sound toggle turns sound on (aria-pressed)') : fail(`sound toggle aria-pressed=${pressed}`)
+    const audio = await page.evaluate(() => window.__abali?.stage.sound?.context?.state ?? 'none')
+    audio !== 'none' ? pass(`audio context created (${audio})`) : fail('no audio context')
+    // Shake: fast pointer movement inside the fizz chapter builds pressure.
+    await scrollToScene(page, '#fizz', 0.6)
+    await page.waitForTimeout(1500)
+    let max = 0
+    let outOfRange = false
+    let burst = false
+    for (let i = 0; i < 40; i++) {
+      await page.mouse.move(i % 2 ? 300 : 980, 380 + (i % 3) * 40)
+      await page.waitForTimeout(30)
+      const v = Number(await page.getAttribute('.gauge', 'aria-valuenow'))
+      max = Math.max(max, v)
+      outOfRange ||= v < 0 || v > 100
+      burst ||= ((await page.textContent('.shake-hint')) ?? '').includes('گفته بودیم')
+    }
+    await page.click('.shake-btn')
+    !outOfRange && (max > 0 || burst)
+      ? pass(`shaking builds pressure (peak ${max}%${burst ? ', burst triggered' : ''})`)
+      : fail(`pressure check: peak ${max}, out of range ${outOfRange}, burst ${burst}`)
+    await scrollToScene(page, '#finale', 0)
+    await page.waitForTimeout(1500)
+    await page.click('.open-btn')
+    await page.waitForTimeout(1200)
+    await page.click('.open-btn') // and recap
+    await page.waitForTimeout(800)
+    const label = await page.textContent('.open-oval')
+    label?.includes('آرام باز کنید') ? pass('open → recap cycle works with sound on') : fail(`open button label: ${label}`)
+  })
+
   await browser.close()
 
   // Without WebGL the illustrated fallback must take over.
