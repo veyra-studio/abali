@@ -1,0 +1,29 @@
+{
+  "name": "abali",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Abali — a Persian, RTL campaign concept for Doogh Abali, built with the Veyra engine. Independent and unofficial.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "verify": "node scripts/verify.mjs",
+    "engine:update": "node scripts/engine-update.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/estedad": "5.3.0",
+    "@fontsource-variable/noto-nastaliq-urdu": "5.3.0",
+    "@fontsource/lalezar": "5.3.0",
+    "@veyra/core": "file:vendor/veyra-core",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@types/three": "0.186.0",
+    "playwright": "1.56.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.4"
+  }
+}

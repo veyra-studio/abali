@@ -1,0 +1,39 @@
+/*
+ * Optional helpers for Veyra projects: `@import '@veyra/core/css';`
+ */
+
+/* Visually hidden but available to assistive tech. */
+.v-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Pinning: a tall scene wrapper with a sticky, viewport-tall child. */
+[data-veyra-pin] {
+  position: relative;
+}
+[data-veyra-pin] > [data-veyra-pin-target] {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100svh;
+  overflow: clip;
+}
+
+/* The three.js layer canvas never intercepts input. */
+[data-veyra-gl] {
+  pointer-events: none;
+}
+
+/* While scroll is locked (intros), avoid layout shift from the scrollbar. */
+html {
+  scrollbar-gutter: stable;
+}
