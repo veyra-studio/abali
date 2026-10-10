@@ -18,7 +18,7 @@ export interface Landscape {
   progress: number
   /** Follow the quality tier: the low tier draws a lean terrain without fine relief. */
   setQuality(quality: Quality): void
-  update(dt: number, time: number, width: number, height: number, reduced: boolean): void
+  update(dt: number, time: number, width: number, height: number, reduced: boolean, pointer?: { snx: number; sny: number; vx: number; vy: number } | null): void
   dispose(): void
 }
 
@@ -194,6 +194,8 @@ const snowVertex = /* glsl */ `
   uniform vec3 uBox;
   uniform vec3 uCenter;
   uniform vec2 uWind;
+  uniform vec2 uHand;
+  uniform vec2 uGust;
   attribute float aSeed;
   varying float vAlpha;
   void main() {
@@ -206,6 +208,10 @@ const snowVertex = /* glsl */ `
     vec3 world = uCenter + p - uBox * 0.5;
     vec4 mv = viewMatrix * vec4(world, 1.0);
     gl_Position = projectionMatrix * mv;
+    // The hand's movement blows the nearest flakes aside, nearer ones more.
+    vec2 ndc = gl_Position.xy / gl_Position.w;
+    float reach = exp(-dot(ndc - uHand, ndc - uHand) * 9.0) * (0.5 + aSeed);
+    gl_Position.xy += uGust * reach * gl_Position.w;
     float depth = -mv.z;
     gl_PointSize = uSize * (0.6 + aSeed) / max(depth, 1.0);
     vAlpha = smoothstep(2.0, 12.0, depth) * (1.0 - smoothstep(uBox.z * 0.35, uBox.z * 0.5, depth));
@@ -299,6 +305,8 @@ export async function createLandscape(renderer: THREE.WebGLRenderer, quality: Qu
     uBox: { value: box },
     uCenter: { value: new THREE.Vector3() },
     uWind: { value: new THREE.Vector2(3.5, 1.2) },
+    uHand: { value: new THREE.Vector2(0, 0) },
+    uGust: { value: new THREE.Vector2(0, 0) },
   }
   const snow = new THREE.Points(
     snowGeo,
@@ -323,6 +331,9 @@ export async function createLandscape(renderer: THREE.WebGLRenderer, quality: Qu
   const from = new THREE.Vector3()
   const forward = new THREE.Vector3()
   let drift = 0
+  let lookYaw = 0
+  let lookPitch = 0
+  const gust = new THREE.Vector2()
 
   // Switching variants recompiles both shaders once.
   const skyMaterial = sky.material as THREE.ShaderMaterial
@@ -344,7 +355,7 @@ export async function createLandscape(renderer: THREE.WebGLRenderer, quality: Qu
     camera,
     progress: 0,
     setQuality,
-    update(dt, time, width, height, reduced) {
+    update(dt, time, width, height, reduced, pointer) {
       const p = self.progress
       const t = p * p * (3 - 2 * p)
       if (!reduced) drift += dt
@@ -356,6 +367,12 @@ export async function createLandscape(renderer: THREE.WebGLRenderer, quality: Qu
       look.set(THREE.MathUtils.lerp(CONE.x * 0.4, CONE.x * 0.6, t), THREE.MathUtils.lerp(700, 900, t), CONE.z)
       camera.position.copy(from)
       camera.lookAt(look)
+      // Look around a little with the pointer.
+      const k = 1 - Math.exp(-dt * 2.5)
+      lookYaw += ((reduced || !pointer ? 0 : -pointer.snx * 0.045) - lookYaw) * k
+      lookPitch += ((reduced || !pointer ? 0 : -pointer.sny * 0.022) - lookPitch) * k
+      camera.rotateY(lookYaw)
+      camera.rotateX(lookPitch)
       camera.aspect = width / height
       // Portrait screens: widen the view so the cone still fits.
       camera.fov = width / height < 0.8 ? 58 : 40
@@ -364,6 +381,15 @@ export async function createLandscape(renderer: THREE.WebGLRenderer, quality: Qu
       sky.position.copy(camera.position)
       skyTime.value = time
       snowUniforms.uTime.value = reduced ? 0 : time
+      // The gust follows the hand's speed and dies away.
+      if (pointer && !reduced) {
+        snowUniforms.uHand.value.set(pointer.snx, -pointer.sny)
+        gust.x += (pointer.vx / width) * 0.9 * dt * 60 * 0.08
+        gust.y += (-pointer.vy / height) * 0.9 * dt * 60 * 0.08
+      }
+      gust.multiplyScalar(Math.exp(-dt * 2.2))
+      gust.clampLength(0, 0.35)
+      snowUniforms.uGust.value.copy(gust)
       snowUniforms.uCenter.value.copy(camera.position).addScaledVector(camera.getWorldDirection(forward), 70)
       snow.visible = !reduced
     },

@@ -112,7 +112,7 @@ export function createExperience(stage: Stage): Experience {
       studio.prepare(renderer, camera)
       renderer.render(scene, camera)
     } else if (world === 'landscape') {
-      exp.landscape!.update(dt, time, layer.width, layer.height, reduced)
+      exp.landscape!.update(dt, time, layer.width, layer.height, reduced, stage.pointer)
       renderer.render(exp.landscape!.scene, exp.landscape!.camera)
     } else if (world === 'table') {
       exp.table!.update(dt, time, layer.width, layer.height, reduced)
