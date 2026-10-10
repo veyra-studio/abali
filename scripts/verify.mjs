@@ -155,8 +155,13 @@ try {
     // The finale opens from the keyboard.
     await page.focus('.open-btn')
     await page.keyboard.press('Enter')
-    await page.waitForTimeout(1500)
+    // The opener comes in and pries the cap off, then «پیسسس», «قلپ، قلپ», «آخیش!».
+    await page.waitForTimeout(700)
+    await page.screenshot({ path: `${OUT}desktop-finale-pry.png` })
+    await page.waitForFunction(() => document.querySelector('.cheers')?.textContent.includes('آخیش'), null, { timeout: 12000 }).catch(() => {})
     const cheers = await text(page, '.cheers')
+    const cap = await page.evaluate(() => window.__abali?.experience?.studio.openFor ?? -1)
+    check(cap >= 0, `the cap came off (${cap.toFixed(1)} s ago)`)
     check(cheers.includes('آخیش'), `finale button opens the bottle from the keyboard («${cheers}»)`)
     await page.screenshot({ path: `${OUT}desktop-finale-open.png` })
   })
@@ -234,9 +239,9 @@ try {
     await scrollToScene(page, '#finale', 0)
     await page.waitForTimeout(1500)
     await page.click('.open-btn')
-    await page.waitForTimeout(1300)
+    await page.waitForTimeout(2600)
     await page.click('.open-btn') // and cap it again
-    await page.waitForTimeout(800)
+    await page.waitForTimeout(900)
     const label = await text(page, '.open-label')
     check(label === 'تق!', `open → recap cycle works with sound on (button «${label}»)`)
   })
