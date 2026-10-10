@@ -224,8 +224,15 @@ export interface Bottle {
   labelTexture: THREE.CanvasTexture
   /** Outer radius of the glass at height `h`. */
   radiusAt(h: number): number
+  /** The glass shell (its material swaps with the quality tier). */
+  glassMesh: THREE.Mesh
   /** Updates scale-dependent material parameters (thickness and tint are in world units). */
   setScale(px: number): void
+  /**
+   * Follows the quality tier: on the low tier the glass is frosted without
+   * transmission, which would draw the bottle's inside a second time each frame.
+   */
+  setQuality(quality: 'low' | 'medium' | 'high'): void
   dispose(): void
 }
 
@@ -381,6 +388,41 @@ export function createBottle(options: { quality: 'low' | 'medium' | 'high' }): B
     // Attenuation distance is in world units (CSS px); thickness is local.
     glass.attenuationDistance = px * 0.12
   }
+  // The low tier's glass: the same frosted, beaded surface, see-through by
+  // blending instead of transmission — milky over the empty neck as the
+  // transmitted glass is, white over the doogh.
+  let frosted: THREE.MeshPhysicalMaterial | null = null
+  const setQuality = (quality: 'low' | 'medium' | 'high') => {
+    if (quality === 'low' && !frosted) {
+      frosted = new THREE.MeshPhysicalMaterial({
+        color: '#f6faf7',
+        // Lit from within by the doogh and the light around, not grey.
+        emissive: new THREE.Color('#8d9590'),
+        metalness: 0,
+        roughness: 1,
+        roughnessMap: dropRough,
+        transparent: true,
+        depthWrite: false,
+        specularIntensity: 1,
+        envMapIntensity: 1.25,
+        normalMap: dropNormal,
+        normalScale: new THREE.Vector2(0.3, 0.3),
+      })
+      // Thin where it faces the eye, milky toward the edges, where the eye
+      // looks through more glass.
+      frosted.onBeforeCompile = (shader, renderer) => {
+        glass.onBeforeCompile(shader, renderer)
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <opaque_fragment>',
+          `#include <opaque_fragment>
+          gl_FragColor.a = mix(0.5, 0.85, pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 2.0));`,
+        )
+      }
+      frosted.customProgramCacheKey = () => 'abali-frosted-glass'
+    }
+    glassMesh.material = quality === 'low' ? frosted! : glass
+  }
+  if (q === 'low') setQuality('low')
 
   return {
     group,
@@ -391,8 +433,12 @@ export function createBottle(options: { quality: 'low' | 'medium' | 'high' }): B
     label,
     labelTexture,
     radiusAt: (h) => outer.radiusAt(h),
+    glassMesh,
     setScale,
+    setQuality,
     dispose() {
+      glass.dispose()
+      frosted?.dispose()
       group.traverse((o) => {
         if (o instanceof THREE.Mesh) {
           o.geometry.dispose()
