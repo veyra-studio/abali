@@ -9,6 +9,7 @@ import * as THREE from 'three'
 import { ContactShadow, studioEnvironment, studioLights } from '@veyra/core/three'
 import { BOTTLE, createBottle } from './bottle'
 import { createCloth } from './food/cloth'
+import { createFork, createSpoon } from './food/cutlery'
 import { createDooghGlass } from './food/glass'
 import { createKebab } from './food/kebab'
 import { createPlate } from './food/plate'
@@ -145,6 +146,17 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
     disposers.push(tomato.dispose)
     add(g, PLATE.x + t.x, PLATE.y + t.z, i * 1.3, 0.33 + i * 0.05, 2, plate.well - 0.08)
   })
+
+  // A spoon and a fork, set down just after the plate.
+  const spoon = createSpoon()
+  const fork = createFork()
+  disposers.push(spoon.dispose, fork.dispose)
+  const cutlery = new THREE.Group()
+  spoon.group.position.set(0, 0, -1.6)
+  fork.group.position.set(0.6, 0, 1.6)
+  cutlery.add(spoon.group, fork.group)
+  // As a table is set: upright beside the dinner, handles toward the diner.
+  add(cutlery, 5.5, 18, -Math.PI / 2 + 0.06, 0.15, -2)
 
   // Onion, sumac, bread and herbs.
   const sides = createSides(quality)
