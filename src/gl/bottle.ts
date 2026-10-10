@@ -279,10 +279,11 @@ export function createBottle(options: { quality: 'low' | 'medium' | 'high' }): B
       .replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
-        float frost = 1.0 - smoothstep(uFrostTop - 0.012, uFrostTop + 0.012, vLocalY);
+        // Below the doogh line, and not on the thick base where drops run off.
+        float frost = (1.0 - smoothstep(uFrostTop - 0.012, uFrostTop + 0.012, vLocalY)) * smoothstep(0.035, 0.06, vLocalY);
         normal = normalize(mix(nonPerturbedNormal, normal, frost));`,
       )
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(0.03, roughnessFactor, 1.0 - smoothstep(uFrostTop - 0.012, uFrostTop + 0.012, vLocalY));')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(0.03, roughnessFactor, (1.0 - smoothstep(uFrostTop - 0.012, uFrostTop + 0.012, vLocalY)) * smoothstep(0.035, 0.06, vLocalY));')
   }
   const glassMesh = new THREE.Mesh(new THREE.LatheGeometry(glassOutline, segments), glass)
   glassMesh.renderOrder = 2

@@ -37,7 +37,9 @@ export interface Experience {
 }
 
 export function createExperience(stage: Stage): Experience {
-  const layer = stage.use(threeLayer({ fov: 15, zIndex: 1, maxDpr: 2, near: 2, autoRender: false, renderer: { antialias: stage.quality?.tier.value !== 'low' } }))
+  // The canvas is transparent over the page (the hero title sits under it):
+  // glass and ice should show that dark page through them, not a milky fill.
+  const layer = stage.use(threeLayer({ fov: 15, zIndex: 1, maxDpr: 2, near: 2, autoRender: false, seeThroughGlass: true, renderer: { antialias: stage.quality?.tier.value !== 'low' } }))
   // Read the tier after the layer: on a software renderer it starts low.
   const tier: Quality = stage.quality?.tier.value ?? 'medium'
   const { renderer, scene, camera } = layer
