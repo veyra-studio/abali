@@ -7,17 +7,17 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/engine-stamp.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "verify": "node scripts/verify.mjs",
-    "engine:update": "node scripts/engine-update.mjs"
+    "engine:update": "npm install @veyra/core@github:veyra-studio/veyra-core#release"
   },
   "dependencies": {
     "@fontsource-variable/estedad": "5.3.0",
     "@fontsource-variable/noto-nastaliq-urdu": "5.3.0",
     "@fontsource/lalezar": "5.3.0",
-    "@veyra/core": "file:vendor/veyra-core",
+    "@veyra/core": "github:veyra-studio/veyra-core#release",
     "three": "0.186.1"
   },
   "devDependencies": {

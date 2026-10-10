@@ -40,8 +40,10 @@ VEYRA_CORE_SRC=../veyra-core npm run dev   # live-develop the engine too
 npm run build                    # typecheck + production build into dist/ (base /abali/)
 npm run preview                  # serve dist at http://localhost:4173/abali/
 npm run verify                   # end-to-end checks + screenshots of the production build
-npm run engine:update            # vendor the latest ../veyra-core release
+npm run engine:update            # move to the newest engine release
 ```
+
+The engine comes from GitHub: `"@veyra/core": "github:veyra-studio/veyra-core#release"` — the branch veyra-core's CI publishes from every green build. Deploys always install the newest release and record it in `dist/engine.json`; when the engine changes, the site rebuilds on its own (see Deploy).
 
 Add `?debug` for Veyra's diagnostics overlay.
 
@@ -57,7 +59,7 @@ src/gl/world.ts       fullscreen shader: label → landscape, snow, bubbles, foa
 src/gl/env.ts         product-photography lighting environment
 src/sound.ts          synthesized sound design (Web Audio)
 src/style.css         design tokens, layout, chapter compositions
-vendor/veyra-core/    vendored Veyra Core release (see VENDORED.json)
+scripts/              verify.mjs (browser checks), engine-stamp.mjs (writes dist/engine.json)
 ```
 
 ## Accessibility
@@ -66,7 +68,7 @@ Real headings and text in the DOM (the canvas is decorative); skip link; every i
 
 ## Deploy
 
-GitHub Actions builds and deploys `dist/` to GitHub Pages on every push to `main` (`.github/workflows/deploy.yml`). **One-time setup:** Settings → Pages → Source: **GitHub Actions**.
+GitHub Actions builds and deploys `dist/` to GitHub Pages on every push to `main` (`.github/workflows/deploy.yml`), always with the newest engine release. It also redeploys when the engine changes: immediately when veyra-core's CI sends an `engine-updated` dispatch (needs its optional `SITES_DISPATCH_TOKEN`), otherwise within the hour — a scheduled check compares the engine's `release` branch with the deployed `engine.json`. If a new engine breaks the build, the deploy fails and the current site stays live. **One-time setup:** Settings → Pages → Source: **GitHub Actions**.
 
 ## Credits
 

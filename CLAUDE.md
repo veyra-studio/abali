@@ -9,7 +9,7 @@ npm install
 npm run dev            # Vite dev server
 npm run build          # tsc --noEmit + vite build (base /abali/)
 npm run verify         # Playwright checks on the production build → verify-output/
-npm run engine:update  # vendor ../veyra-core/release/veyra-core-<latest>.tgz
+npm run engine:update  # move to the newest engine release (github:veyra-studio/veyra-core#release)
 VEYRA_CORE_SRC=../veyra-core npm run dev   # alias the engine to its source
 ```
 
@@ -17,7 +17,7 @@ VEYRA_CORE_SRC=../veyra-core npm run dev   # alias the engine to its source
 
 - Persian-first: copy lives in `index.html`, in natural Persian (ZWNJ, «٫», Persian digits, «» quotes). Don't add English UI labels.
 - No invented brand facts (history, ingredients, awards). See "Facts used in the copy" in README.md. Keep the unofficial-concept disclaimer.
-- Engine code is never patched here; generic capabilities go to veyra-core, then `npm run engine:update`.
+- Engine code is never patched here; generic capabilities go to veyra-core. Once merged there, CI publishes the `release` branch and this site rebuilds with it (dispatch or hourly check); locally, `npm run engine:update`.
 - Pinned chapters: a tall `.chapter.pinned` wrapper + `.pin` sticky child. Never override `.pin`'s `position: sticky` (it is also the stacking layer above the WebGL canvas).
 - The hero title sits *under* the canvas (the bottle stands in front of it); other text sits above.
 - Horizontal overflow must be clipped (RTL documents render offset otherwise).

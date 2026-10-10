@@ -1,7 +1,10 @@
 name: Deploy to GitHub Pages
 
-# Builds on every pull request (as a check) and deploys from main to
-# https://veyra-studio.github.io/abali/
+# Builds every pull request (as a check) and deploys main to
+# https://veyra-studio.github.io/abali/ — always with the newest engine from
+# veyra-core's `release` branch. When the engine changes the site rebuilds:
+# right away on an `engine-updated` dispatch from veyra-core's CI, otherwise
+# within the hour (a scheduled check against the deployed engine.json).
 #
 # One-time setup: Settings → Pages → Build and deployment → Source:
 # "GitHub Actions".
@@ -11,6 +14,10 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  repository_dispatch:
+    types: [engine-updated]
+  schedule:
+    - cron: '17 * * * *'
 
 permissions:
   contents: read
@@ -19,10 +26,27 @@ permissions:
 
 concurrency:
   group: pages-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a deployment in progress; superseded PR checks may go.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  engine:
+    # Scheduled runs rebuild only when the engine moved since the deployed build.
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
+    steps:
+      - id: compare
+        run: |
+          latest=$(git ls-remote https://github.com/veyra-studio/veyra-core.git refs/heads/release | cut -f1)
+          deployed=$(curl -fsS "https://veyra-studio.github.io/abali/engine.json?t=$(date +%s)" | jq -r '.commit // empty' || true)
+          echo "engine release: ${latest:-none} · deployed: ${deployed:-none}"
+          if [ -n "$latest" ] && [ "$latest" != "$deployed" ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; else echo "changed=false" >> "$GITHUB_OUTPUT"; fi
+
   build:
+    needs: engine
+    if: ${{ !cancelled() && (github.event_name != 'schedule' || needs.engine.outputs.changed == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -31,12 +55,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Use the newest engine release
+        run: npm run engine:update
       - run: npm run build
       - name: Check the build targets the /abali/ base path
         run: |
           grep -q 'src="/abali/assets/' dist/index.html || { echo "::error::dist/index.html does not reference /abali/assets/"; exit 1; }
           test -f dist/favicon.svg
           test -f dist/404.html
+          jq -e '.commit | test("^[0-9a-f]{40}$")' dist/engine.json
       - if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
       - if: github.event_name != 'pull_request'
@@ -45,8 +72,8 @@ jobs:
           path: dist
 
   deploy:
-    if: github.event_name != 'pull_request'
     needs: build
+    if: ${{ !cancelled() && needs.build.result == 'success' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages

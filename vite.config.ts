@@ -2,7 +2,7 @@ import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
 
 // Set VEYRA_CORE_SRC=../veyra-core to develop against the engine source
-// (HMR across both repositories). Builds use the vendored release.
+// (HMR across both repositories). Builds use the release installed from GitHub.
 const coreSrc = process.env.VEYRA_CORE_SRC ? resolve(process.env.VEYRA_CORE_SRC, 'src') : null
 
 export default defineConfig({
@@ -13,6 +13,7 @@ export default defineConfig({
     alias: coreSrc
       ? [
           { find: /^@veyra\/core\/three$/, replacement: resolve(coreSrc, 'three/index.ts') },
+          { find: /^@veyra\/core\/glsl$/, replacement: resolve(coreSrc, 'glsl/index.ts') },
           { find: /^@veyra\/core$/, replacement: resolve(coreSrc, 'index.ts') },
         ]
       : [],
