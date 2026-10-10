@@ -45,5 +45,20 @@ const meta = {
   vendoredAt: new Date().toISOString(),
 }
 writeFileSync(join(target, 'VENDORED.json'), JSON.stringify(meta, null, 2) + '\n')
+
+// CI installs the engine from this folder, so every vendored file must be
+// committable. A bare "dist/" in .gitignore also matches vendor/veyra-core/dist.
+let ignored = []
+try {
+  ignored = execFileSync('git', ['-C', project, 'ls-files', '--others', '--ignored', '--exclude-standard', '--', 'vendor/veyra-core'], { encoding: 'utf8' })
+    .split('\n')
+    .filter(Boolean)
+} catch {}
+if (ignored.length) {
+  console.error(`${ignored.length} vendored file(s) are gitignored and would be missing in CI (e.g. ${ignored[0]}).`)
+  console.error('Anchor build-output patterns in .gitignore to the project root ("/dist/", not "dist/").')
+  process.exit(1)
+}
+
 console.log(`Vendored ${pkg.name}@${pkg.version} into vendor/veyra-core`)
 execFileSync('npm', ['install', '--no-audit', '--no-fund'], { cwd: project, stdio: 'inherit' })
