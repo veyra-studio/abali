@@ -26,6 +26,7 @@ VEYRA_CORE_SRC=../veyra-core npm run dev   # alias the engine to its source
 - Horizontal overflow must be clipped (RTL documents render offset otherwise).
 - Three worlds share one renderer (`src/gl/experience.ts`): the studio (pixel camera, DOM slots), the landscape and the table (own cameras, built lazily after the hero). Chapters choose the world and write state; transitions use the veil (foam, mist, dark).
 - Keep the heavy work off the scroll: the terrain bakes in `terrain.worker.ts`; the table re-renders shadows only while dishes move; transmissive glass refracts only opaque objects (keep liquids opaque).
+- The ice is ray-traced (`refractiveSolid`, `src/gl/ice.ts`): what its rays see is written in GLSL (`solidOutside`) — in the studio the bottle (a cylinder), the black floor and a backlight hidden behind the set; in the glass the doogh. Keep those in step with the scene, and keep the hooks cheap (sines, not noise: they run at every bounce, for every pixel). The bottle's glass keeps three.js's milky transmission on purpose (the frosted look).
 
 ## Verification
 
