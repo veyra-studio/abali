@@ -17,7 +17,10 @@ const CREAM = '#ece2cd'
 function boteh(ctx: CanvasRenderingContext2D, x: number, y: number, h: number, flip: boolean, rand: () => number) {
   const w = h * 0.62
   ctx.save()
-  ctx.translate(x, y)
+  // Stamped by hand: each one a little off in place, angle and pressure.
+  ctx.translate(x + (rand() - 0.5) * h * 0.05, y + (rand() - 0.5) * h * 0.05)
+  ctx.rotate((rand() - 0.5) * 0.06)
+  ctx.globalAlpha *= 0.86 + rand() * 0.14
   if (flip) ctx.scale(-1, 1)
   const outline = (s: number) => {
     ctx.beginPath()
@@ -33,9 +36,13 @@ function boteh(ctx: CanvasRenderingContext2D, x: number, y: number, h: number, f
   outline(1)
   ctx.fill()
   ctx.stroke()
+  // The second and third blocks never land exactly on the first.
+  const slip = () => ctx.translate((rand() - 0.5) * h * 0.035, (rand() - 0.5) * h * 0.035)
+  slip()
   ctx.fillStyle = CREAM
   outline(0.66)
   ctx.fill()
+  slip()
   ctx.fillStyle = INDIGO
   outline(0.42)
   ctx.fill()
@@ -48,7 +55,6 @@ function boteh(ctx: CanvasRenderingContext2D, x: number, y: number, h: number, f
     ctx.fill()
   }
   ctx.restore()
-  void rand
 }
 
 function flower(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: string) {
@@ -152,9 +158,30 @@ export function drawCloth(width: number, depth: number, pxPerCm: number): HTMLCa
   ctx.globalAlpha = 0.16
   ctx.fillStyle = CREAM
   ctx.fillRect(0, 0, c.width, c.height)
+  // Along the fold lines the dye has worn a little lighter.
+  for (const fx of FOLDS_X(width)) {
+    const g = ctx.createLinearGradient((fx - 1.2) * k, 0, (fx + 1.2) * k, 0)
+    g.addColorStop(0, 'rgba(250, 245, 232, 0)')
+    g.addColorStop(0.5, 'rgba(250, 245, 232, 0.5)')
+    g.addColorStop(1, 'rgba(250, 245, 232, 0)')
+    ctx.fillStyle = g
+    ctx.fillRect((fx - 1.2) * k, 0, 2.4 * k, c.height)
+  }
+  for (const fz of FOLDS_Z(depth)) {
+    const g = ctx.createLinearGradient(0, (fz - 1.2) * k, 0, (fz + 1.2) * k)
+    g.addColorStop(0, 'rgba(250, 245, 232, 0)')
+    g.addColorStop(0.5, 'rgba(250, 245, 232, 0.45)')
+    g.addColorStop(1, 'rgba(250, 245, 232, 0)')
+    ctx.fillStyle = g
+    ctx.fillRect(0, (fz - 1.2) * k, c.width, 2.4 * k)
+  }
   ctx.globalAlpha = 1
   return c
 }
+
+/** Where the cloth was folded for storage (cm from its left and top edges): in four one way, in three the other. */
+const FOLDS_X = (width: number) => [width / 4, width / 2, (width * 3) / 4]
+const FOLDS_Z = (depth: number) => [depth / 3, (depth * 2) / 3]
 
 /** A fine cotton weave as a tileable normal map. */
 export function drawWeave(size = 256, threads = 32): HTMLCanvasElement {
@@ -189,18 +216,46 @@ export function drawWeave(size = 256, threads = 32): HTMLCanvasElement {
   return c
 }
 
-/** The cloth mesh, gently wrinkled, lying on y = 0. */
-export function createCloth(width: number, depth: number, quality: 'low' | 'medium' | 'high'): { mesh: THREE.Mesh; dispose(): void } {
-  const segs = quality === 'low' ? 60 : 140
+/**
+ * The cloth mesh, gently wrinkled, lying on y = 0, centered on `center`
+ * (table coordinates). Under the dishes (`flats`: table x, z and radius)
+ * their weight presses it flat.
+ */
+export function createCloth(
+  width: number,
+  depth: number,
+  quality: 'low' | 'medium' | 'high',
+  center: [number, number] = [0, 0],
+  flats: Array<[number, number, number]> = [],
+): { mesh: THREE.Mesh; dispose(): void } {
+  const segs = quality === 'low' ? 80 : 220
   const geometry = new THREE.PlaneGeometry(width, depth, segs, Math.round((segs * depth) / width)).rotateX(-Math.PI / 2)
   const { noise2 } = createNoise(3)
   const pos = geometry.attributes.position as THREE.BufferAttribute
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i)
     const z = pos.getZ(i)
-    // Soft folds from being unfolded onto the floor.
-    const fold = noise2(x / 38, z / 38) * 0.55 + noise2(x / 14 + 3, z / 14) * 0.18 + Math.max(0, Math.sin(x / 9 + noise2(z / 30, 1) * 2)) ** 6 * 0.25
-    pos.setY(i, fold)
+    // Soft folds from being unfolded onto the floor…
+    let fold = noise2(x / 38, z / 38) * 0.7 + noise2(x / 14 + 3, z / 14) * 0.2
+    // …and the creases from being stored folded: ridges and valleys in turn,
+    // sharp at the line, wandering a little along it.
+    const u = x + width / 2
+    const v = z + depth / 2
+    FOLDS_X(width).forEach((f, j) => {
+      const d = u - f - noise2(v / 25, j * 7) * 0.8
+      fold += (j % 2 ? -1 : 1) * 0.32 * Math.exp(-((d / 1.1) ** 2)) * (0.6 + 0.4 * noise2(v / 18, j + 2))
+    })
+    FOLDS_Z(depth).forEach((f, j) => {
+      const d = v - f - noise2(u / 25, j * 5 + 1) * 0.8
+      fold += (j % 2 ? 1 : -1) * 0.28 * Math.exp(-((d / 1.1) ** 2)) * (0.6 + 0.4 * noise2(u / 18, j + 9))
+    })
+    // Pressed flat under a dish, easing out around it.
+    let free = 1
+    for (const [fx, fz, fr] of flats) {
+      const d = Math.hypot(x + center[0] - fx, z + center[1] - fz)
+      free = Math.min(free, THREE.MathUtils.smoothstep(d, fr, fr + 6))
+    }
+    pos.setY(i, fold * free)
   }
   geometry.computeVertexNormals()
   const print = new THREE.CanvasTexture(drawCloth(width, depth, quality === 'low' ? 6 : quality === 'medium' ? 8 : 11))
@@ -209,15 +264,20 @@ export function createCloth(width: number, depth: number, quality: 'low' | 'medi
   const weave = new THREE.CanvasTexture(drawWeave())
   weave.wrapS = weave.wrapT = THREE.RepeatWrapping
   weave.repeat.set(width / 1.6, depth / 1.6)
-  const material = new THREE.MeshStandardMaterial({
+  const material = new THREE.MeshPhysicalMaterial({
     map: print,
     normalMap: weave,
-    normalScale: new THREE.Vector2(0.45, 0.45),
-    roughness: 0.92,
+    normalScale: new THREE.Vector2(0.6, 0.6),
+    roughness: 0.9,
     metalness: 0,
+    // Cotton catches the light at a glance: a soft, warm sheen on the folds.
+    sheen: 0.55,
+    sheenRoughness: 0.75,
+    sheenColor: new THREE.Color('#fff4dc'),
     envMapIntensity: 0.6,
   })
   const mesh = new THREE.Mesh(geometry, material)
+  mesh.position.set(center[0], 0, center[1])
   mesh.receiveShadow = true
   return {
     mesh,
