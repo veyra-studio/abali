@@ -384,7 +384,7 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
       product.position.set(state.x, state.baseY, 0)
       product.scale.setScalar(S)
       bottle.setScale(S)
-      ice.setScale(S)
+      ice.place(product.position, S)
 
       // Pointer tilt, idle turn, shake.
       const tiltAmount = reduced ? 0 : state.pointer
