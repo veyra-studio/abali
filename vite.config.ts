@@ -10,6 +10,9 @@ export default defineConfig({
   // Used in dev and preview too, so path mistakes surface before deploy.
   base: '/abali/',
   resolve: {
+    // One three.js, even when the engine comes from its source folder (which
+    // has its own node_modules): two copies break instanceof checks.
+    dedupe: ['three'],
     alias: coreSrc
       ? [
           { find: /^@veyra\/core\/three$/, replacement: resolve(coreSrc, 'three/index.ts') },
