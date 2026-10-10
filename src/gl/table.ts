@@ -95,28 +95,44 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
   }
 
   // Chelow kabab: the plate, rice, two skewers' worth of koobideh, tomatoes.
-  const plate = createPlate()
+  // Positions on the plate are in its own frame (centimetres from its center).
+  const PLATE = new THREE.Vector2(-24, -3)
+  const plate = createPlate(1.1)
   const rice = createRice({ quality })
   const platter = new THREE.Group()
   platter.add(plate.mesh)
-  rice.group.position.set(-5.2, plate.well, 0.6)
+  rice.group.position.set(-5.4, plate.well, 0.2)
   platter.add(rice.group)
   disposers.push(plate.dispose, rice.dispose)
-  add(platter, -24, -3, 0, 0.12, 0)
+  add(platter, PLATE.x, PLATE.y, 0, 0.12, 0)
 
-  const kebabs = [createKebab({ seed: 3, quality }), createKebab({ seed: 7, quality, length: 21 })]
-  kebabs.forEach((k, i) => {
+  // Side by side along the rice; where a kebab reaches the rim, it rides up it.
+  const skewers = [
+    { x: 5.3, z: 0.9, length: 19.5, turn: 0.06, seed: 3 },
+    { x: 9, z: 0, length: 16.5, turn: 0.08, seed: 7 },
+  ]
+  skewers.forEach((k, i) => {
+    const rotY = Math.PI / 2 + k.turn
+    const cos = Math.cos(rotY)
+    const sin = Math.sin(rotY)
+    const ground = (x: number, z: number) => Math.max(0, plate.surfaceAt(Math.hypot(k.x + x * cos + z * sin, k.z - x * sin + z * cos)) - plate.well)
+    const kebab = createKebab({ seed: k.seed, quality, length: k.length, ground })
     const g = new THREE.Group()
-    g.add(k.mesh)
-    disposers.push(k.dispose)
-    add(g, -16.5 + i * 4.2, -1.5 + i * 0.6, Math.PI / 2 + 0.1 - i * 0.06, 0.2 + i * 0.06, 1, plate.well)
+    g.add(kebab.mesh)
+    disposers.push(kebab.dispose)
+    add(g, PLATE.x + k.x, PLATE.y + k.z, rotY, 0.2 + i * 0.06, 1, plate.well)
   })
-  const tomatoes = [createTomato({ seed: 2, quality, size: 5.6 }), createTomato({ seed: 5, quality, size: 5 })]
-  tomatoes.forEach((t, i) => {
+  // One beyond the rice at the top, one tucked between the rice and a kebab.
+  const grilled = [
+    { x: 0.2, z: -9.8, size: 5.6, seed: 2 },
+    { x: 1.4, z: 8.8, size: 5, seed: 5 },
+  ]
+  grilled.forEach((t, i) => {
+    const tomato = createTomato({ seed: t.seed, quality, size: t.size })
     const g = new THREE.Group()
-    g.add(t.mesh)
-    disposers.push(t.dispose)
-    add(g, -17 + i * 6.4, -14.2 + i * 1.6, i * 1.3, 0.33 + i * 0.05, 2, plate.well - 0.1)
+    g.add(tomato.mesh)
+    disposers.push(tomato.dispose)
+    add(g, PLATE.x + t.x, PLATE.y + t.z, i * 1.3, 0.33 + i * 0.05, 2, plate.well - 0.08)
   })
 
   // Onion, sumac, bread and herbs.

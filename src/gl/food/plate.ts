@@ -29,6 +29,8 @@ export interface Plate {
   /** Height of the well's surface. */
   well: number
   radius: number
+  /** Height of the top surface at distance `r` from the center (the well, then up the rim). */
+  surfaceAt(r: number): number
   dispose(): void
 }
 
@@ -61,10 +63,24 @@ export function createPlate(scale = 1): Plate {
   const mesh = new THREE.Mesh(geometry, material)
   mesh.castShadow = true
   mesh.receiveShadow = true
+  // The top surface, from the center outward.
+  const top = PROFILE.slice(RIM[0] + 1).reverse()
+  const surfaceAt = (r: number) => {
+    const x = r / scale
+    for (let i = 1; i < top.length; i++) {
+      const [r1, h1] = top[i]!
+      if (x <= r1) {
+        const [r0, h0] = top[i - 1]!
+        return (h0 + ((x - r0) / (r1 - r0)) * (h1 - h0)) * scale
+      }
+    }
+    return top[top.length - 1]![1] * scale
+  }
   return {
     mesh,
     well: 0.74 * scale,
     radius: 15.05 * scale,
+    surfaceAt,
     dispose() {
       geometry.dispose()
       material.dispose()
