@@ -91,14 +91,15 @@ export function createIce(options: { quality: 'low' | 'medium' | 'high'; count?:
   })
   const count = options.count ?? (options.quality === 'low' ? 4 : 6)
   // Placement around the foot, mostly in front and to the sides (the camera's view).
+  // Tray ice is about 3 cm across: roughly 0.14 of the bottle's height.
   const spots: Array<[angle: number, dist: number, size: number]> = [
-    [-0.95, 0.3, 0.19],
-    [0.85, 0.31, 0.18],
-    [0.05, 0.36, 0.13],
-    [-2.0, 0.33, 0.16],
-    [1.95, 0.32, 0.15],
-    [0.45, 0.52, 0.09],
-    [-0.5, 0.55, 0.08],
+    [-0.95, 0.27, 0.145],
+    [0.85, 0.28, 0.135],
+    [0.05, 0.33, 0.105],
+    [-2.0, 0.3, 0.125],
+    [1.95, 0.29, 0.12],
+    [0.45, 0.46, 0.075],
+    [-0.5, 0.48, 0.07],
   ]
   for (let i = 0; i < Math.min(count, spots.length); i++) {
     const [angle, dist, size] = spots[i]!

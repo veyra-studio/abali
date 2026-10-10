@@ -238,7 +238,7 @@ export function createBottle(options: { quality: 'low' | 'medium' | 'high' }): B
   const { outer, inner, glass: glassOutline } = bottleProfiles()
 
   // Condensation: droplets and mist on the cold glass.
-  const maps = condensationMaps({ size: q === 'high' ? 1024 : 512, seed: 5, mist: 0.7, roughness: [0.07, 0.4] })
+  const maps = condensationMaps({ size: q === 'high' ? 1024 : 512, seed: 5, mist: 0.7, runs: 0.03, roughness: [0.07, 0.4] })
   const dropNormal = new THREE.CanvasTexture(maps.normal)
   const dropRough = new THREE.CanvasTexture(maps.roughness)
   for (const t of [dropNormal, dropRough]) {
