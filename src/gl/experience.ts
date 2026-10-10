@@ -37,9 +37,10 @@ export interface Experience {
 }
 
 export function createExperience(stage: Stage): Experience {
-  // The canvas is transparent over the page (the hero title sits under it):
-  // glass and ice should show that dark page through them, not a milky fill.
-  const layer = stage.use(threeLayer({ fov: 15, zIndex: 1, maxDpr: 2, near: 2, autoRender: false, seeThroughGlass: true, renderer: { antialias: stage.quality?.tier.value !== 'low' } }))
+  // three.js's milky fill behind transmissive glass is kept on purpose: it
+  // gives the cold bottle its frosted white look (the ice doesn't use
+  // transmission, so it isn't affected).
+  const layer = stage.use(threeLayer({ fov: 15, zIndex: 1, maxDpr: 2, near: 2, autoRender: false, renderer: { antialias: stage.quality?.tier.value !== 'low' } }))
   // Read the tier after the layer: on a software renderer it starts low.
   const tier: Quality = stage.quality?.tier.value ?? 'medium'
   const { renderer, scene, camera } = layer
@@ -111,7 +112,7 @@ export function createExperience(stage: Stage): Experience {
       studio.prepare(renderer, camera)
       renderer.render(scene, camera)
     } else if (world === 'landscape') {
-      exp.landscape!.update(dt, time, layer.width, layer.height, reduced)
+      exp.landscape!.update(dt, time, layer.width, layer.height, reduced, stage.pointer)
       renderer.render(exp.landscape!.scene, exp.landscape!.camera)
     } else if (world === 'table') {
       exp.table!.update(dt, time, layer.width, layer.height, reduced)

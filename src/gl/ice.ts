@@ -46,28 +46,30 @@ function cubeGeometry(size: number, rand: () => number, seed: number): THREE.Buf
 export function createIce(options: { quality: 'low' | 'medium' | 'high'; count?: number }): Ice {
   const group = new THREE.Group()
   const rand = seededRandom(11)
+  // Bright ice, as in a drinks shot: a pale, see-through body that turns
+  // white and dense toward the edges, where light travels through more ice
+  // (alpha follows the Fresnel term), crisp highlights over a clear coat.
+  // No transmission: it doesn't depend on what the canvas shows behind.
   const material = new THREE.MeshPhysicalMaterial({
-    color: '#ffffff',
-    // A little frosty from the freezer: reflections soften slightly.
-    roughness: 0.07,
-    transmission: 1,
-    // About the cube's own size: refraction bends what's behind, not a magnifier.
-    thickness: 0.09,
-    ior: 1.31,
-    attenuationColor: new THREE.Color('#dbe9f5'),
-    attenuationDistance: 120,
+    color: '#eef6ff',
+    roughness: 0.05,
+    metalness: 0,
+    clearcoat: 1,
+    clearcoatRoughness: 0.03,
     specularIntensity: 1,
-    envMapIntensity: 1.15,
-    // The misty heart inside is drawn after the ice: let it show through.
+    envMapIntensity: 2.2,
+    ior: 1.31,
+    transparent: true,
     depthWrite: false,
-    // A faint rainbow at the edges, as thick clear ice splits the light.
-    dispersion: 0.25,
-    // Fresh from the freezer: a thin frost that whitens the faces at a glance.
-    sheen: 0.35,
-    sheenRoughness: 0.85,
-    sheenColor: new THREE.Color('#dfe9f2'),
   })
-  // Trapped air: a white, feathery cloud in the middle.
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <opaque_fragment>',
+      `#include <opaque_fragment>
+      float facing = clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0);
+      gl_FragColor.a = mix(0.12, 0.88, pow(1.0 - facing, 2.0));`,
+    )
+  }
   // The cloudy heart of freezer ice: air and impurities pushed to the
   // middle as it froze from the outside in — a soft white mist, densest at
   // the center, with a few streaks.
@@ -95,7 +97,7 @@ export function createIce(options: { quality: 'low' | 'medium' | 'high'; count?:
     }
   }
   const mistTexture = new THREE.CanvasTexture(mist)
-  const coreMaterial = new THREE.SpriteMaterial({ map: mistTexture, transparent: true, depthWrite: false, opacity: 0.9 })
+  const coreMaterial = new THREE.SpriteMaterial({ map: mistTexture, transparent: true, depthWrite: false, opacity: 0.8 })
   // A fracture plane: a pale sheet that catches the light.
   const crackMaterial = new THREE.MeshStandardMaterial({
     color: '#f2f7fb',
@@ -127,7 +129,7 @@ export function createIce(options: { quality: 'low' | 'medium' | 'high'; count?:
     cube.add(outer)
     if (options.quality !== 'low') {
       const core = new THREE.Sprite(coreMaterial)
-      core.scale.set(size * (0.62 + rand() * 0.18), size * (0.48 + rand() * 0.12), 1)
+      core.scale.set(size * (0.78 + rand() * 0.16), size * (0.6 + rand() * 0.12), 1)
       core.position.set((rand() - 0.5) * size * 0.1, -size * 0.02, (rand() - 0.5) * size * 0.1)
       core.renderOrder = 4
       cube.add(core)
@@ -147,8 +149,8 @@ export function createIce(options: { quality: 'low' | 'medium' | 'high'; count?:
   return {
     group,
     material,
-    setScale(px) {
-      material.attenuationDistance = px * 0.6
+    setScale() {
+      // Nothing depends on the scale since the ice no longer uses transmission.
     },
     dispose() {
       group.traverse((o) => {

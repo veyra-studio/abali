@@ -17,6 +17,8 @@ export interface AbaliSound {
   capHit(strength: number): void
   /** «قلپ، قلپ»: `count` gulps of a cold drink. */
   gulps(count?: number): void
+  /** «آخیش»: the breath out after the gulps, `delay` seconds from now. */
+  ahh(delay?: number): void
   /** A soft tick for chapter changes. */
   tick(): void
   /** A dish set down on the cloth. */
@@ -111,6 +113,15 @@ export function createSound(bus: SoundBus | null): AbaliSound {
         b.tone({ frequency: 105 * k, to: 75 * k, gain: 0.1, attack: 0.004, decay: 0.12, delay: t + 0.01 })
         t += 0.42 + Math.random() * 0.12
       }
+    },
+    ahh(delay = 0) {
+      if (!ctx()) return
+      const b = bus!
+      // An open-mouthed breath out: soft air through two vowel-like resonances,
+      // swelling and falling away, a little lower as it ends.
+      b.burst({ from: 1150, to: 820, q: 2.2, gain: 0.11, attack: 0.09, decay: 0.85, delay })
+      b.burst({ from: 2600, to: 1900, q: 3, gain: 0.05, attack: 0.08, decay: 0.7, delay })
+      b.burst({ filter: 'lowpass', from: 700, to: 300, q: 0.7, gain: 0.06, attack: 0.1, decay: 0.9, delay })
     },
     tick() {
       if (!ctx()) return
