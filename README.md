@@ -1,6 +1,6 @@
-# Abali — «یک بطری کوه»
+# Abali — «تق، پیس، آخیش!»
 
-**A bottle of mountain.** A Persian, right-to-left campaign concept for Doogh Abali (دوغ آبعلی), and the first public showcase of the [Veyra](https://github.com/veyra-studio/veyra-core) creative web experience engine.
+**Tak, hiss, ahh.** A Persian, right-to-left campaign concept for Doogh Abali (دوغ آبعلی), and the first public showcase of the [Veyra](https://github.com/veyra-studio/veyra-core) creative web experience engine.
 
 Live: **https://veyra-studio.github.io/abali/**
 
@@ -8,28 +8,29 @@ Live: **https://veyra-studio.github.io/abali/**
 
 ## The idea
 
-Look at the label: a blue field, a yellow oval, white. Sky, sun, snow. The film pushes the camera *into* the label and finds the landscape it has always been describing — Abali, in the Alborz — then follows it down to the table.
+A cold Abali is three sounds: the opener biting the crown cap — **«تق»**; the gas escaping — **«پیس»**; and the first sip — **«آخیش»**, the word Persian has for that relief. The film stretches those three seconds into a scroll, then sets the table and hands the bottle to you.
 
 | # | Chapter | What happens | Veyra at work |
 | --- | --- | --- | --- |
-| — | Loader | A crown cap seen from above; its 21 crimps light up as assets load, then it pops. | `Preloader`, timelines, optional synthesized sound |
-| 00 | «یک بطری کوه» | A procedurally built 3D bottle stands in front of the Nastaliq headline; it follows the pointer. | three.js layer, DOM-anchored placement, springs |
-| 01 | Label | Scroll pushes into the label; a perspective-correct hand-off swaps the 3D label for a 2D world; the calligraphy dissolves and the oval rises as the sun over snowy ridges. | pinned scenes, scrubbed choreography, custom shaders |
-| 02 | آبعلی | The place: Alborz ridges, Damavand's cone, snowfall, wind. | scene progress → parallax, sound bed |
-| 03 | گاز | Night, carbonation. Shake the pointer (or press the button): pressure builds, the gauge climbs, the foam bursts. | pointer velocity, springs, live uniforms |
-| 04 | سفید | Snow, doogh, sofreh. Lalezar lines animate letter by letter **with their joins intact**. | script-aware `splitText`, direction-aware drift |
-| 05 | سفره | A flat-lay sofreh fills dish by dish; the menu lights up. | scene-driven SVG choreography |
-| 06 | نوش جان | Back to the dark. «آرام باز کنید» — open it gently. | cap physics, bubble burst, sound |
+| — | Loader | «دارد خنک می‌شود…» — the crown cap from above; its 21 crimps light up as the film loads, then it snaps off. | `Preloader`, timelines, `SoundBus.tone`/`burst` |
+| 00 | «تق، پیس، آخیش!» | The bottle on black acrylic with ice, condensation on the glass, reflected in the floor. The slogan stands behind it. | three.js layer, `Profile`, `studioEnvironment`, `condensationMaps`, `ReflectiveFloor`, `ContactShadow`, springs |
+| 01 | تق | Scroll closes in on the cap; a steel opener bites; the cap flips off — «تق!». | pinned scene, scrubbed choreography |
+| 02 | پیس | A cold wisp rises from the neck. Shake the pointer (or press the button) and the foam climbs out of the bottle until it boils over and floods the screen. | pointer velocity, springs, instanced foam, full-screen shader |
+| 03 | آخیش | The foam turns to snow: a winter valley in the Central Alborz, a volcanic cone far off. «آخیش» stretches with kashida as you scroll. | `kashida`, terrain baked in a worker (`heightfield`, `erodedNoise`, `bakeSunlight`, `bakeOcclusion`), snowfall |
+| 04 | سفره | A sofreh seen from above: chelow with saffron and butter, koobideh, tomatoes, onion, sumac, bread and herbs land one by one; the menu card lights up. «فقط یک چیز کم است.» — then the bottle. | scene progress, instancing (thousands of rice grains), soft window shadows, contact shadows |
+| 05 | حالا نوبتِ شماست | Your turn: press «تق!» — the cap flies, the wisp rises, «آخیش!». | cap physics, synthesized sound |
 
-Everything visual is generated live: no product photos, no 3D model files, no images. The bottle's contour was measured from reference photography of the 260 ml glass bottle; the label colors (cerulean field, lemon oval, navy Nastaliq) were sampled from it.
+Everything visual is generated live: no product photos, no 3D model files, no image textures. The bottle is rebuilt from photographs of the real one — silhouettes traced per row and normalized: a long, nearly straight conical neck from the crown finish to a full upper body, a gentle waist, a slightly narrower lower bulge, a rounded heel and a thick, green-tinted base; the paper label sits on the cone, so its sides converge toward the neck; the navy crown cap has the standard 21 flutes. Label colors (cerulean field, darker border, white rule, golden oval, navy lettering) were sampled from the photos. The reference photos were used for measurement only and are not part of this repository.
 
 ## Facts used in the copy
 
-The copy avoids brand-history claims. It only states:
+The copy makes no claims about the brand's history, ingredients or awards. It only states:
 
-- Abali (آبعلی) is a place in the Alborz mountains, in Damavand County, Tehran Province, known for mineral springs and snowy winters (it hosts one of Iran's oldest ski areas).
-- The product is a carbonated doogh (دوغ گازدار), sold in a glass bottle with a metal crown cap.
-- Doogh is traditionally served with chelow kabab.
+- **Abali is the name of a town:** a city in Rudehen District, Damavand County, Tehran Province; a mountainous area in the Central Alborz with cold winters and cool summers ([Wikipedia, «آبعلی»](https://fa.wikipedia.org/wiki/%D8%A2%D8%A8%D8%B9%D9%84%DB%8C), [Abali](https://en.wikipedia.org/wiki/Abali)).
+- **Doogh is served cold and goes with chelow kabab** ("a cold and savoury Persian drink"; "Persian dishes such as Dizi and Chelow Kabab are the most commonly served with doogh" — [Wikipedia, Doogh](https://en.wikipedia.org/wiki/Doogh)).
+- **The product** is a carbonated doogh (دوغ گازدار) in a glass bottle with a metal crown cap — as sold and photographed in retail listings. (Listings disagree on the volume, so the copy doesn't state one.)
+
+The onomatopoeia (تق، پیس، آخیش) and the shaking joke («تکانش ندهید» … «دیدید؟ سر رفت.») describe opening any cold carbonated drink; they are not product claims.
 
 ## Develop
 
@@ -40,6 +41,7 @@ VEYRA_CORE_SRC=../veyra-core npm run dev   # live-develop the engine too
 npm run build                    # typecheck + production build into dist/ (base /abali/)
 npm run preview                  # serve dist at http://localhost:4173/abali/
 npm run verify                   # end-to-end checks + screenshots of the production build
+npm run verify -- --gpu          # same, rendered on the GPU (macOS)
 npm run engine:update            # move to the newest engine release
 ```
 
@@ -50,21 +52,25 @@ Add `?debug` for Veyra's diagnostics overlay.
 ## Structure
 
 ```
-index.html            Persian markup: all copy lives in the DOM
-src/main.ts           stage, preloading, loader, sound toggle
-src/chapters.ts       scroll choreography for every chapter
-src/gl/experience.ts  renderer, product placement, label hand-off math
-src/gl/product.ts     procedural bottle, label artwork, crown cap, ice
-src/gl/world.ts       fullscreen shader: label → landscape, snow, bubbles, foam
-src/gl/env.ts         product-photography lighting environment
-src/sound.ts          synthesized sound design (Web Audio)
-src/style.css         design tokens, layout, chapter compositions
-scripts/              verify.mjs (browser checks), engine-stamp.mjs (writes dist/engine.json)
+index.html              Persian markup: all copy lives in the DOM (plus the drawn fallback bottle)
+src/main.ts             stage, preloading, loader, sound toggles, lazy worlds
+src/chapters.ts         scroll choreography for every chapter
+src/gl/experience.ts    the director: one renderer, three worlds, one veil
+src/gl/bottle.ts        the bottle: measured profile, glass, doogh, label band, crown cap
+src/gl/label.ts         the label artwork
+src/gl/studio.ts        hero/finale studio: floor, ice, shadow, opener, wisp, foam
+src/gl/{ice,opener,plume,foam,veil}.ts
+src/gl/landscape.ts     «آخیش»: terrain, sky, snow (alborz.ts shape, terrain.worker.ts bake)
+src/gl/table.ts         «سفره»: the flat-lay; food/ cloth, plate, rice, kebab, tomato, glass, sides
+src/sound.ts            synthesized sound design (Web Audio)
+src/style.css           design tokens, layout, chapter compositions
+src/palette.ts          colors sampled from the product
+scripts/                verify.mjs (browser checks), engine-stamp.mjs (writes dist/engine.json)
 ```
 
-## Accessibility
+## Accessibility and performance
 
-Real headings and text in the DOM (the canvas is decorative); skip link; every interaction has a keyboard path (shake button, open button); sound is off by default; reduced motion disables smoothing, entrances and pointer tilt; without WebGL, an illustrated CSS/SVG fallback takes over.
+Real headings and text in the DOM (the canvas is decorative); skip link; every interaction has a keyboard path (shake button, open button); sound is off by default and both toggles report their state; reduced motion disables smoothing, entrances, pointer tilt, the word stretch and the drop animations; without WebGL, a drawn bottle, mountains and sofreh take over. The terrain is baked in a worker; the mountains and the table are built after the hero has loaded; the table re-renders its shadows only while dishes move; the adaptive quality governor lowers resolution on slow devices, and the low tier drops the floor reflection.
 
 ## Deploy
 
@@ -72,4 +78,4 @@ GitHub Actions builds and deploys `dist/` to GitHub Pages on every push to `main
 
 ## Credits
 
-Fonts: Noto Nastaliq Urdu, Lalezar, Estedad — SIL Open Font License. Built with [Veyra Core](https://github.com/veyra-studio/veyra-core) and [three.js](https://threejs.org). Concept and code: [Veyra Studio](https://veyra-studio.github.io/).
+Fonts: Lalezar, Estedad, Noto Nastaliq Urdu — SIL Open Font License. Built with [Veyra Core](https://github.com/veyra-studio/veyra-core) and [three.js](https://threejs.org). Concept, copy and code: [Veyra Studio](https://veyra-studio.github.io/).
