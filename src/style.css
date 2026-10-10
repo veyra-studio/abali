@@ -875,9 +875,9 @@ html.no-webgl .shake {
 /* ------------------------------------------------------------------ */
 /* Responsive art direction                                            */
 /* ------------------------------------------------------------------ */
-/* Tall tablets: the menu card lies across the top of the table, as on
+/* Tall and square screens: the menu card lies across the top of the table, as on
    phones, and the camera frames the spread below it. */
-@media (min-width: 761px) and (max-aspect-ratio: 4/5) {
+@media (min-width: 761px) and (max-aspect-ratio: 1/1) {
   .sofreh-copy {
     inset-block: calc(var(--hud-h) + 3vh) auto;
     translate: none;
