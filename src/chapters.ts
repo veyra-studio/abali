@@ -422,6 +422,8 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     }
     setTheme(themeNow)
     sofrehSection.style.setProperty('--table-o', String(world === 'table' ? 1 - mist : 0))
+    // «آخیش» is navy while the mist is thick and turns white over the clear valley.
+    akhishSection.style.setProperty('--clear', String(exp && world === 'landscape' ? smooth(range(mist, 0.55, 0.25)) : 0))
     if (!exp) return
 
     const veil = exp.veil.uniforms

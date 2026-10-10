@@ -595,19 +595,57 @@ html.is-ready main {
   display: flex;
   flex-direction: column;
 }
-.akhish-word + .akhish-line {
-  margin-top: auto;
+.akhish-chapter {
+  /* 0 while the mist is thick (navy ink on white), 1 once the valley is clear (white on the landscape). */
+  --clear: 0;
+  --ink: color-mix(in srgb, #ffffff calc(var(--clear) * 100%), var(--snow-ink));
 }
 .akhish-word {
-  color: var(--snow-ink);
+  color: var(--ink);
+  text-shadow: 0 2px 34px rgb(12 30 70 / calc(var(--clear) * 0.45));
+}
+.akhish-chapter .chapter-no {
+  color: var(--ink);
+}
+/* Where you are: a pane of frosted glass over the mountains. */
+.place {
+  margin-top: auto;
+  align-self: flex-start;
+  max-width: 31rem;
+  padding: 1.1rem 1.4rem 1.15rem;
+  border-radius: 16px;
+  color: var(--ink);
+  background: rgb(255 255 255 / calc(0.1 + (1 - var(--clear)) * 0.3));
+  border: 1px solid rgb(255 255 255 / 0.32);
+  box-shadow: 0 22px 44px -24px rgb(8 24 60 / calc(var(--clear) * 0.6));
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  backdrop-filter: blur(14px) saturate(1.15);
+}
+.place-name {
+  margin: 0 0 0.35rem;
+  font-family: var(--font-nastaliq);
+  font-size: clamp(2.3rem, 1.6rem + 2vw, 3.3rem);
+  line-height: 1.55;
+  color: var(--ink);
 }
 .akhish-line {
-  color: var(--snow-ink);
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(1rem, 0.9rem + 0.3vw, 1.12rem);
   font-weight: 500;
-  text-shadow: 0 0 18px rgb(240 246 252 / 0.9), 0 0 4px rgb(240 246 252 / 0.8);
+  line-height: 1.85;
 }
 .akhish-line + .akhish-line {
-  margin-top: 0.1rem;
+  margin-top: 0.15rem;
+}
+.place-coords {
+  margin: 0.85rem 0 0;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgb(255 255 255 / 0.3);
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--ink) 85%, transparent);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ------------------------------------------------------------------ */
@@ -947,8 +985,11 @@ html.no-webgl .shake {
     width: 92px;
   }
   .akhish-chapter .chapter-copy {
-    inset-block: calc(var(--hud-h) + 3vh) auto;
+    inset-block: calc(var(--hud-h) + 3vh) 4vh;
     max-width: none;
+  }
+  .place {
+    padding: 0.9rem 1.1rem 1rem;
   }
   .sofreh-copy {
     inset-block: calc(var(--hud-h) + 2vh) auto;
