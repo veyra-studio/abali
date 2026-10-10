@@ -22,17 +22,3 @@ export const colors = {
   milk: '#f4f2ec',
   snowShade: '#a9c4e0',
 } as const
-
-/** The palette the previous world shader uses. */
-export const palette = {
-  blue: colors.labelField,
-  blueDeep: colors.labelBorder,
-  sky: '#5aa9e3',
-  yellow: colors.labelOval,
-  navy: colors.labelInk,
-  night: colors.night,
-  milk: colors.milk,
-  doogh: colors.doogh,
-  snowShade: colors.snowShade,
-  ink: colors.ink,
-} as const
