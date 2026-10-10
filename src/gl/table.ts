@@ -161,9 +161,13 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
   disposers.push(bottle.dispose)
   add(lying, -14, 21, -0.32, 0.87, -1)
   const glass = createDooghGlass(quality)
-  glass.group.traverse((o) => {
-    if (o instanceof THREE.Mesh && (o.material as THREE.MeshPhysicalMaterial).transmission > 0) cheapGlass(o.material as THREE.MeshPhysicalMaterial)
-  })
+  // Real refraction — the cloth seen through the walls — is what makes it
+  // read as a glass from above. The low tier keeps plain see-through glass.
+  if (quality === 'low') {
+    glass.group.traverse((o) => {
+      if (o instanceof THREE.Mesh && (o.material as THREE.MeshPhysicalMaterial).transmission > 0) cheapGlass(o.material as THREE.MeshPhysicalMaterial)
+    })
+  }
   disposers.push(glass.dispose)
   add(glass.group, 2, 6, 0, 0.9, -1)
 
@@ -228,10 +232,16 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
       camera.aspect = aspect
       const portrait = aspect < 0.8
       camera.fov = 28
-      const visible = portrait ? Math.max(50 / aspect, 70 / (1 - self.cover)) : 66 / Math.min(1, aspect) // cm, top to bottom
+      // When copy covers the top (narrow layouts), the spread fits below it,
+      // centered; otherwise wide screens keep it left of the card.
+      const covered = self.cover > 0
+      const fit = covered ? 70 / (1 - self.cover) : 0
+      const visible = Math.max(portrait ? 50 / aspect : 66 / Math.min(1, aspect), fit) // cm, top to bottom
       const dist = visible / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
       const drift = reduced ? 0 : Math.sin(time * 0.15) * 0.4
-      camera.position.set(portrait ? -22 : -8 + drift, Math.min(dist, 420), portrait ? -7.5 - (self.cover / 2) * visible : -2)
+      const x = portrait ? -22 : (covered ? -20 : -8) + drift
+      const z = covered ? -7.5 - (self.cover / 2) * visible : portrait ? -7.5 : -2
+      camera.position.set(x, Math.min(dist, 420), z)
       camera.lookAt(camera.position.x, 0, camera.position.z)
       camera.updateProjectionMatrix()
     },

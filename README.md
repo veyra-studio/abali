@@ -1,6 +1,6 @@
-# Abali — «تق، پیس، آخیش!»
+# Abali — «خنکی صدا دارد.»
 
-**Tak, hiss, ahh.** A Persian, right-to-left campaign concept for Doogh Abali (دوغ آبعلی), and the first public showcase of the [Veyra](https://github.com/veyra-studio/veyra-core) creative web experience engine.
+**Cool has a sound.** A Persian, right-to-left campaign concept for Doogh Abali (دوغ آبعلی), and the first public showcase of the [Veyra](https://github.com/veyra-studio/veyra-core) creative web experience engine.
 
 Live: **https://veyra-studio.github.io/abali/**
 
@@ -8,17 +8,17 @@ Live: **https://veyra-studio.github.io/abali/**
 
 ## The idea
 
-A cold Abali is three sounds: the opener biting the crown cap — **«تق»**; the gas escaping — **«پیس»**; and the first sip — **«آخیش»**, the word Persian has for that relief. The film stretches those three seconds into a scroll, then sets the table and hands the bottle to you.
+Cool has a sound — **«خنکی صدا دارد.»** Opening a cold Abali is a handful of them: the opener prying off the crown cap — **«تق»**; the gas escaping — **«پیس»**; the first gulps — **«قلپ، قلپ»**; and **«آخیش»**, the word Persian has for that relief. The film stretches those seconds into a scroll, then sets the table and hands the bottle to you.
 
 | # | Chapter | What happens | Veyra at work |
 | --- | --- | --- | --- |
-| — | Loader | «دارد خنک می‌شود…» — the crown cap from above; its 21 crimps light up as the film loads, then it snaps off. | `Preloader`, timelines, `SoundBus.tone`/`burst` |
-| 00 | «تق، پیس، آخیش!» | The bottle on black acrylic with ice, condensation on the glass, reflected in the floor. The slogan stands behind it. | three.js layer, `Profile`, `studioEnvironment`, `condensationMaps`, `ReflectiveFloor`, `ContactShadow`, springs |
-| 01 | تق | Scroll closes in on the cap; a steel opener bites; the cap flips off — «تق!». | pinned scene, scrubbed choreography |
-| 02 | پیس | A cold wisp rises from the neck. Shake the pointer (or press the button) and the foam climbs out of the bottle until it boils over and floods the screen. | pointer velocity, springs, instanced foam, full-screen shader |
-| 03 | آخیش | The foam turns to snow: a winter valley in the Central Alborz, a volcanic cone far off. «آخیش» stretches with kashida as you scroll. | `kashida`, terrain baked in a worker (`heightfield`, `erodedNoise`, `bakeSunlight`, `bakeOcclusion`), snowfall |
-| 04 | سفره | A sofreh seen from above: chelow with saffron and butter, koobideh, tomatoes, onion, sumac, bread and herbs land one by one; the menu card lights up. «فقط یک چیز کم است.» — then the bottle. | scene progress, instancing (thousands of rice grains), soft window shadows, contact shadows |
-| 05 | حالا نوبتِ شماست | Your turn: press «تق!» — the cap flies, the wisp rises, «آخیش!». | cap physics, synthesized sound |
+| — | Loader | «یک لحظه…» — the crown cap from above; its 21 crimps light up as the film loads, then it snaps off. | `Preloader`, timelines, `SoundBus.tone`/`burst` |
+| 00 | «خنکی صدا دارد.» | The bottle on black acrylic with ice, condensation on the glass, reflected in the floor; the headline stands behind it. | three.js layer, `Profile`, `studioEnvironment`, `condensationMaps`, `ReflectiveFloor`, `ContactShadow`, springs |
+| 01 | تق | The camera closes in and looks down onto the cap; a steel opener slides in flat, hooks under the skirt and pries; the cap snaps off in real time — «تق!» — and falls with real gravity. | pinned scene, scroll-triggered real-time events, rigid-body cap |
+| 02 | پیس | A breath of cold fog at the mouth, then the fizz. Shake the pointer (or press the button) and the foam climbs out of the bottle until it boils over and floods the screen. | pointer velocity, springs, instanced foam, full-screen shader |
+| 03 | آخیش | «قلپ، قلپ» — then the foam turns to snow: a winter valley in the Central Alborz, a volcanic cone far off. «آخیش» stretches with kashida as you scroll. | `kashida`, terrain baked in a worker (`heightfield`, `erodedNoise`, `bakeSunlight`, `bakeOcclusion`), rock and snow read from a `noiseTexture`, snowfall |
+| 04 | سفره | A sofreh seen from above: chelow with saffron and butter, koobideh, grilled tomatoes, onion, sumac, bread and herbs are set down one by one; the menu card lights up. «فقط یک چیز کم است.» — then the bottle, and a tall glass of doogh with ice, mint and a straw. | scene progress, instancing (thousands of rice grains), soft window shadows, contact shadows, refraction |
+| 05 | حالا نوبتِ شماست | Your turn: press «تق!» — the opener pries the cap off, it clatters onto the floor and settles; «پیسسس»، «قلپ، قلپ»، «آخیش!». | cap physics, synthesized sound |
 
 Everything visual is generated live: no product photos, no 3D model files, no image textures. The bottle is rebuilt from photographs of the real one — silhouettes traced per row and normalized: a long, nearly straight conical neck from the crown finish to a full upper body, a gentle waist, a slightly narrower lower bulge, a rounded heel and a thick, green-tinted base; the paper label sits on the cone, so its sides converge toward the neck; the navy crown cap has the standard 21 flutes. Label colors (cerulean field, darker border, white rule, golden oval, navy lettering) were sampled from the photos. The reference photos were used for measurement only and are not part of this repository.
 
@@ -30,7 +30,7 @@ The copy makes no claims about the brand's history, ingredients or awards. It on
 - **Doogh is served cold and goes with chelow kabab** ("a cold and savoury Persian drink"; "Persian dishes such as Dizi and Chelow Kabab are the most commonly served with doogh" — [Wikipedia, Doogh](https://en.wikipedia.org/wiki/Doogh)).
 - **The product** is a carbonated doogh (دوغ گازدار) in a glass bottle with a metal crown cap — as sold and photographed in retail listings. (Listings disagree on the volume, so the copy doesn't state one.)
 
-The onomatopoeia (تق، پیس، آخیش) and the shaking joke («تکانش ندهید» … «دیدید؟ سر رفت.») describe opening any cold carbonated drink; they are not product claims.
+The headline («خنکی صدا دارد.»), the onomatopoeia (تق، پیس، قلپ، آخیش) and the shaking joke («تکانش ندهید.» … «تکانش بده») describe opening any cold carbonated drink; they are not product claims.
 
 ## Develop
 

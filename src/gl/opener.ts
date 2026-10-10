@@ -1,7 +1,11 @@
 /**
  * A flat steel bottle opener — the plain kind restaurants keep by the
- * fridge: a bar with a rounded head and an opening whose lip hooks under
- * the crown cap. Units: bottle units; the opening's lip sits at the origin.
+ * fridge, about 12 cm long with a head wider than the cap. Its opening
+ * goes over the cap's edge: the far end rests on top of the cap, the lip
+ * (the opening's edge on the handle side) hooks under the crimped skirt,
+ * and lifting the handle pries the cap up.
+ * Units: bottle units (21.6 cm). The lip sits at the origin; the handle
+ * runs toward +x; the underside lies on y = 0.
  */
 import * as THREE from 'three'
 
@@ -10,51 +14,64 @@ export interface Opener {
   dispose(): void
 }
 
+/** Length of the opening along the bar (lip to far edge). */
+export const OPENER_HOLE = 0.125
+/** Where the far end rests on the cap, measured from the lip toward the tip. */
+export const OPENER_REST = 0.133
+
 export function createOpener(): Opener {
-  const L = 0.62 // overall length
-  const W = 0.145 // width of the head
-  const shape = new THREE.Shape()
-  // Outline: rounded head around the origin, a bar toward +x tapering slightly.
+  const W = 0.2 // width of the head (4.3 cm), wider than the cap
   const r = W / 2
-  shape.moveTo(-r * 0.2, -r)
-  shape.lineTo(L - r * 0.6, -r * 0.78)
-  shape.quadraticCurveTo(L, -r * 0.78, L, 0)
-  shape.quadraticCurveTo(L, r * 0.78, L - r * 0.6, r * 0.78)
-  shape.lineTo(-r * 0.2, r)
-  shape.absarc(-r * 0.2, 0, r, Math.PI / 2, (Math.PI * 3) / 2, false)
-  // The opening: a rounded slot whose near edge is the lip.
+  const head = -0.05 // center of the rounded head
+  const end = 0.42 // the handle's end
+  const shape = new THREE.Shape()
+  shape.moveTo(head, -r)
+  // The bar narrows a little from the head toward the handle.
+  shape.bezierCurveTo(0.08, -r, 0.12, -r * 0.74, 0.2, -r * 0.72)
+  shape.lineTo(end - r * 0.7, -r * 0.7)
+  shape.quadraticCurveTo(end, -r * 0.7, end, 0)
+  shape.quadraticCurveTo(end, r * 0.7, end - r * 0.7, r * 0.7)
+  shape.lineTo(0.2, r * 0.72)
+  shape.bezierCurveTo(0.12, r * 0.74, 0.08, r, head, r)
+  shape.absarc(head, 0, r, Math.PI / 2, (Math.PI * 3) / 2, false)
+  // The opening: a straight lip at x = 0 with rounded corners, sides wide
+  // enough for the cap's edge to come up through it, a round far end.
   const hole = new THREE.Path()
-  const x0 = -0.035
-  const x1 = 0.005
-  const hh = 0.028
-  hole.moveTo(x0, -hh)
-  hole.lineTo(x1, -hh)
-  hole.absarc(x1, 0, hh, -Math.PI / 2, Math.PI / 2, false)
-  hole.lineTo(x0, hh)
-  hole.absarc(x0, 0, hh, Math.PI / 2, (Math.PI * 3) / 2, false)
+  const hw = 0.068
+  const cr = 0.02
+  const far = -OPENER_HOLE + hw // center of the round far end
+  hole.moveTo(-cr, -hw)
+  hole.absarc(-cr, -hw + cr, cr, -Math.PI / 2, 0, false)
+  hole.lineTo(0, hw - cr)
+  hole.absarc(-cr, hw - cr, cr, 0, Math.PI / 2, false)
+  hole.lineTo(far, hw)
+  hole.absarc(far, 0, hw, Math.PI / 2, (Math.PI * 3) / 2, false)
+  hole.lineTo(-cr, -hw)
   shape.holes.push(hole)
-  // A hanging hole at the end of the bar.
+  // A hanging hole at the end of the handle.
   const hang = new THREE.Path()
-  hang.absarc(L - 0.075, 0, 0.022, 0, Math.PI * 2, true)
+  hang.absarc(end - 0.06, 0, 0.02, 0, Math.PI * 2, true)
   shape.holes.push(hang)
 
+  const thick = 0.009 // 2 mm of steel
   const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: 0.008,
+    depth: thick - 0.004,
     bevelEnabled: true,
-    bevelThickness: 0.003,
-    bevelSize: 0.0035,
+    bevelThickness: 0.002,
+    bevelSize: 0.0025,
     bevelSegments: 3,
     curveSegments: 32,
   })
-  geometry.translate(0, 0, -0.004)
-  // Lie flat: the bar in the XZ plane, its face up.
+  // Lie flat, face up, with the underside on y = 0.
   geometry.rotateX(-Math.PI / 2)
+  geometry.computeBoundingBox()
+  geometry.translate(0, -geometry.boundingBox!.min.y, 0)
   // Brushed stainless steel.
   const material = new THREE.MeshPhysicalMaterial({
     color: '#cfd4da',
     metalness: 1,
     // Brushed and a little dull: reflections stay soft as it moves.
-    roughness: 0.4,
+    roughness: 0.38,
     anisotropy: 0.7,
     anisotropyRotation: Math.PI / 2,
     envMapIntensity: 1.6,

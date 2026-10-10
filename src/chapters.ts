@@ -2,12 +2,12 @@
  * Scroll choreography for the whole film. Each chapter is a Veyra scene;
  * its progress drives the DOM typography and, with WebGL, the worlds:
  *
- *   hero    the bottle stands in the studio, cold, capped
- *   تق      the camera closes in on the cap; the opener bites; the cap flies
- *   پیس     the gas escapes as a cold wisp; shake it and it boils over
- *   آخیش    the foam turns to snow: Abali's mountains, the word stretches
+ *   hero    the bottle stands in the studio, cold, capped: «خنکی صدا دارد.»
+ *   تق      the camera closes in on the cap; the opener pries it off
+ *   پیس     a breath of cold fog, then the fizz; shake it and it boils over
+ *   آخیش    gulps, then the foam turns to snow: Abali's mountains, the word stretches
  *   سفره    the sofreh fills, dish by dish; one thing is missing
- *   finale  your turn: open it
+ *   finale  your turn: open it — تق، پیس، قلپ قلپ، آخیش
  *
  * Two rules keep it natural. Camera moves and transitions are tied to
  * scroll and begin while the next section scrolls in, so nothing waits on
@@ -138,21 +138,28 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
   const UNDO = 0.5
   const slam = new Spring(0, { stiffness: 320, damping: 14 })
   const taqShow = new Spring(0, { stiffness: 260, damping: 24 })
+  let snapped = false
+  const snap = () => {
+    snapped = true
+    sound.taq()
+    sound.hiss(0.8)
+    slam.impulse(reduced() ? 0 : 9)
+  }
   stage.scene('#taq', {
     ...scenePresets.pinned,
     onProgress(p) {
       taqP = p
       if (p >= POP && !popped) {
+        // The opener levers in real time; the sound and «تق!» come when the cap snaps.
         popped = true
-        exp?.studio.openWithOpener()
-        sound.taq()
-        sound.hiss(0.8)
-        slam.impulse(reduced() ? 0 : 9)
+        if (exp) exp.studio.openWithOpener()
+        else snap()
       } else if (p < UNDO && popped) {
-        // Scrolled back: the cap goes back on, the opener back to the rim.
+        // Scrolled back: the cap flies back on, the opener back to the rim.
         popped = false
+        snapped = false
         exp?.studio.resetCap()
-        window.setTimeout(() => sound.clack(), 380)
+        window.setTimeout(() => sound.clack(), 480)
       }
     },
   })
@@ -255,40 +262,66 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
   let opened = false
   scrollIn('#finale', (p) => (finaleIn = p))
   let cheerTimer: number | undefined
+  let finalePending = false
+  // The finale's three sounds, and a fourth: the gulps before «آخیش!».
+  const cheer = () => {
+    sound.taq()
+    sound.hiss(1)
+    cheers.textContent = 'پیسسس'
+    cheerTimer = window.setTimeout(() => {
+      cheers.textContent = 'قلپ، قلپ'
+      sound.gulps(3)
+      cheerTimer = window.setTimeout(() => (cheers.textContent = 'آخیش!'), 1500)
+    }, 900)
+  }
   openBtn.addEventListener('click', () => {
     window.clearTimeout(cheerTimer)
     if (!opened) {
       opened = true
-      exp?.studio.popCap()
-      sound.taq()
-      sound.hiss(1)
-      cheers.textContent = 'پیسسس'
-      cheerTimer = window.setTimeout(() => (cheers.textContent = 'آخیش!'), 1100)
       openLabel.textContent = 'یکی دیگر؟'
+      // The opener comes in and pries the cap off; the sounds follow the snap.
+      if (exp) {
+        finalePending = true
+        exp.studio.openWithOpener()
+      } else cheer()
     } else {
       opened = false
+      finalePending = false
       exp?.studio.resetCap()
-      window.setTimeout(() => sound.clack(), 420)
+      window.setTimeout(() => sound.clack(), 480)
       cheers.textContent = ''
       openLabel.textContent = 'تق!'
     }
   })
+  const hookStudio = () => {
+    if (!exp || exp.studio.onPop) return
+    exp.studio.onPop = () => {
+      if (finalePending) {
+        finalePending = false
+        cheer()
+      } else snap()
+    }
+    exp.studio.onCapHit = (strength) => sound.capHit(strength)
+  }
 
   // ------------------------------------------------------------------
   // Per-frame orchestration: worlds, studio state, veil, theme, sound
   // ------------------------------------------------------------------
   let lastWorld: World = 'studio'
+  let lastFinale = false
   const fizzSpring = new Spring(0, { stiffness: 40, damping: 12 })
   const foamSpring = new Spring(0, { stiffness: 30, damping: 9 })
   let hiss = 0
+  let gulped = false
   stage.onFrame((frame) => {
     const dt = frame.delta
     const time = frame.time
     const r = reduced()
     hookTable()
+    hookStudio()
 
     // «تق!» slams in when the cap comes off, and leaves if it goes back on.
-    taqShow.target = popped ? 1 : 0
+    taqShow.target = snapped ? 1 : 0
     if (r) taqShow.snap(taqShow.target)
     const show = clamp(taqShow.step(dt))
     const s = slam.step(dt)
@@ -348,6 +381,11 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     const openFor = exp?.studio.openFor ?? -1
     fizzSpring.target = pisP > 0.02 && pisP < 0.98 ? 0.18 + pressure * 0.82 : popped && taqP < 1 ? 0.25 : 0
     sound.fizz(Math.max(0, fizzSpring.step(dt)))
+    // «قلپ، قلپ»: the first gulps as the foam turns to mountain air, before «آخیش!».
+    if (akhishIn > 0.1 && !gulped && popped) {
+      gulped = true
+      sound.gulps(3)
+    } else if (akhishIn <= 0.02 && akhishP <= 0) gulped = false
     const inMountains = Math.max(akhishIn * 0.6, akhishP > 0 && akhishP < 1 ? 1 - Math.abs(akhishP - 0.45) * 1.2 : 0)
     sound.wind(sofrehIn > 0 ? 0 : 0.6 * inMountains)
 
@@ -391,10 +429,13 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     veil.uMist.value = mist
     veil.uMistCool.value = mistCool
     veil.uDark.value = dark
-    // Coming back to the studio from another world (under a veil): the cap
-    // is as the story left it — off after «تق», on for the finale until opened.
-    if (world === 'studio' && lastWorld !== 'studio') exp.studio.setCap(finaleIn > 0 ? !opened : !popped)
+    // Coming back to the studio from another world (under a veil), or
+    // arriving at the finale however you got there: the cap is as the story
+    // left it — off after «تق», on for the finale until you open it.
+    const atFinale = finaleIn > 0.5
+    if (world === 'studio' && (lastWorld !== 'studio' || atFinale !== lastFinale)) exp.studio.setCap(atFinale ? !opened : !popped)
     lastWorld = world
+    lastFinale = atFinale
     exp.world = world
     // The camera starts up the valley while the mist is still lifting.
     if (exp.landscape) exp.landscape.progress = 0.2 * akhishIn + 0.8 * akhishP
@@ -408,6 +449,7 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     st.visible = true
     st.turn = 0
     st.tiltX = 0
+    st.capTilt = 0
     st.shake = 0
     st.foam = 0
     st.plume = 0
@@ -415,10 +457,10 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     st.opener = 0
     if (world !== 'studio') return
 
-    // The cold wisp: thick for a moment after the cap comes off, then a
-    // thin thread; shaking feeds it.
-    const wisp = openFor >= 0 ? (r ? 0.45 : 0.24 + 0.58 * Math.exp(-openFor / 2.2)) : 0
-    const wispRise = openFor >= 0 ? range(openFor, 0, 1.3) : 0
+    // A breath of cold fog over the mouth the moment the cap comes off (the
+    // gas expands and cools) — small, faint and gone within a second.
+    const wisp = openFor >= 0 && !r ? 0.7 * Math.exp(-openFor / 0.3) * smooth(range(openFor, 0, 0.04)) : 0
+    const wispRise = openFor >= 0 ? range(openFor, 0, 0.55) : 0
 
     if (finaleIn > 0) {
       const place = fromSlot(finaleSlot, true)
@@ -443,8 +485,11 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     st.idle = 1 - range(toCap, 0, 0.6)
     st.pointer = Math.max(0.35, 1 - toCap)
     st.tiltX = 0.16 * toNeck
+    // In close on the cap the camera looks down onto it a little, so the
+    // opener lying on top reads as a flat steel blade.
+    st.capTilt = 0.38 * toCap * (1 - toNeck)
     st.opener = smooth(range(taqP, 0.3, 0.52))
-    st.plume = wisp + (pisP > 0 ? pressure * 0.4 : 0)
+    st.plume = wisp
     st.plumeRise = wispRise
     st.shake = pisP > 0 ? pressure : 0
     foamSpring.target = pisP > 0 ? (burst >= 0 ? 1 : Math.max(pressure * 0.55, scrollFlood)) : 0

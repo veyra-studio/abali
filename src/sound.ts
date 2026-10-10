@@ -2,7 +2,7 @@
  * Synthesized sound design — no audio files. Built from tones and noise on
  * the Veyra sound bus, so it stays silent unless the visitor turns sound on.
  * The film is about three sounds: «تق» (the cap), «پیس» (the gas) and the
- * quiet after the first sip.
+ * «آخیش» after the first gulps («قلپ، قلپ»).
  */
 import type { SoundBus } from '@veyra/core'
 
@@ -13,6 +13,10 @@ export interface AbaliSound {
   hiss(strength?: number): void
   /** The cap pressed back on. */
   clack(): void
+  /** The cap landing on the acrylic, bouncing or rattling as it settles, `0…1`. */
+  capHit(strength: number): void
+  /** «قلپ، قلپ»: `count` gulps of a cold drink. */
+  gulps(count?: number): void
   /** A soft tick for chapter changes. */
   tick(): void
   /** A dish set down on the cloth. */
@@ -84,6 +88,29 @@ export function createSound(bus: SoundBus | null): AbaliSound {
       if (!ctx()) return
       bus!.burst({ from: 3200, to: 2400, q: 6, gain: 0.24, attack: 0.001, decay: 0.07 })
       bus!.tone({ frequency: 1900, to: 1700, type: 'square', gain: 0.04, decay: 0.09 })
+    },
+    capHit(strength) {
+      if (!ctx() || strength < 0.02) return
+      const b = bus!
+      // Thin tin on a hard floor: a bright click and a short, inharmonic ring.
+      const f = 2700 + Math.random() * 500
+      b.burst({ from: 5600, to: 4200, q: 8, gain: 0.12 * strength, attack: 0.001, decay: 0.025 })
+      b.tone({ frequency: f, to: f * 0.99, type: 'triangle', gain: 0.035 * strength, decay: 0.07 + strength * 0.08 })
+      b.tone({ frequency: f * 1.71, type: 'triangle', gain: 0.02 * strength, decay: 0.05 + strength * 0.05 })
+    },
+    gulps(count = 3) {
+      if (!ctx()) return
+      const b = bus!
+      // Each swallow: a soft knock in the throat and the rising "glug" of
+      // liquid and air; a breath-length apart, never quite even.
+      let t = 0.02
+      for (let i = 0; i < count; i++) {
+        const k = 0.9 + Math.random() * 0.2
+        b.burst({ filter: 'lowpass', from: 900, to: 260, q: 1.4, gain: 0.14, attack: 0.004, decay: 0.06, delay: t })
+        b.tone({ frequency: 170 * k, to: 400 * k, gain: 0.16, attack: 0.006, decay: 0.1, delay: t + 0.025 })
+        b.tone({ frequency: 105 * k, to: 75 * k, gain: 0.1, attack: 0.004, decay: 0.12, delay: t + 0.01 })
+        t += 0.42 + Math.random() * 0.12
+      }
     },
     tick() {
       if (!ctx()) return

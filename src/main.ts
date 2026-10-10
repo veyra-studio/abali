@@ -57,7 +57,7 @@ preload.progress.subscribe((p) => loader.progress(p), { immediate: true })
 
 const fonts = Promise.all([
   preload.font('700 1em "Noto Nastaliq Urdu Variable"', 'دوغ آبعلی', 1),
-  preload.font('400 1em "Lalezar"', 'تق، پیس، آخیش! سفره چیده شد.', 1),
+  preload.font('400 1em "Lalezar"', 'خنکی صدا دارد. سفره چیده شد.', 1),
   preload.font('400 1em "Estedad Variable"', 'سه صدا تا خنکی. همه‌چیز با یک دربازکن شروع می‌شود.', 0.5),
 ])
 
