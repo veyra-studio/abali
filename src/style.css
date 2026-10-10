@@ -430,7 +430,7 @@ html.is-ready main {
   display: grid;
   font-family: var(--font-display);
   font-weight: 400;
-  /* Three lines must fit between the kicker and the sub on any screen. */
+  /* Both lines must fit between the kicker and the sub on any screen. */
   font-size: clamp(3.6rem, min(15vh, 11.5vw), 12rem);
   line-height: 1.1;
   color: var(--milk);
@@ -438,7 +438,7 @@ html.is-ready main {
 .hero-title .beat {
   display: block;
 }
-.hero-title .beat[data-beat='akhish'] {
+.hero-title .beat-accent {
   color: var(--gold);
 }
 .hero-slot {
