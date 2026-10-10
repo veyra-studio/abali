@@ -54,14 +54,14 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
   const scene = new THREE.Scene()
   scene.background = new THREE.Color('#e9e0cc')
   scene.environment = studioEnvironment(renderer, { lights: studioLights.soft, walls: ['#cfc7b8', '#8f877a'] })
-  scene.environmentIntensity = 0.85
+  scene.environmentIntensity = 0.72
   renderer.shadowMap.enabled = true
   renderer.shadowMap.type = THREE.VSMShadowMap
   // Shadows are re-rendered only while something moves (see update).
   renderer.shadowMap.autoUpdate = false
 
   // Window light from the top left; its shadows fall toward the reader.
-  const sun = new THREE.DirectionalLight('#fff3e2', 3.4)
+  const sun = new THREE.DirectionalLight('#fff1dc', 3.9)
   sun.position.set(-70, 150, -55)
   sun.castShadow = true
   sun.shadow.mapSize.setScalar(quality === 'high' ? 2048 : quality === 'medium' ? 1536 : 1024)
@@ -71,10 +71,10 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
   sun.shadow.camera.bottom = -60
   sun.shadow.camera.near = 20
   sun.shadow.camera.far = 320
-  sun.shadow.radius = 5
+  sun.shadow.radius = 4
   sun.shadow.blurSamples = 16
   sun.shadow.bias = -0.0004
-  scene.add(sun, new THREE.HemisphereLight('#fff8ee', '#cbbd9f', 0.32))
+  scene.add(sun, new THREE.HemisphereLight('#fff8ee', '#cbbd9f', 0.26))
 
   const disposers: Array<() => void> = []
   // The printed border frames the spread along the top and the left.
@@ -257,10 +257,10 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
       // centered; otherwise wide screens keep it left of the card.
       const covered = self.cover > 0
       const fit = covered ? 70 / (1 - self.cover) : 0
-      const visible = Math.max(portrait ? 50 / aspect : 66 / Math.min(1, aspect), fit) // cm, top to bottom
+      const visible = Math.max(portrait ? 56 / aspect : 66 / Math.min(1, aspect), fit) // cm, top to bottom
       const dist = visible / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
       const drift = reduced ? 0 : Math.sin(time * 0.15) * 0.4
-      const x = portrait ? -22 : (covered ? -20 : -8) + drift
+      const x = portrait ? -21 : (covered ? -20 : -8) + drift
       const z = covered ? -7.5 - (self.cover / 2) * visible : portrait ? -7.5 : -2
       camera.position.set(x, Math.min(dist, 420), z)
       camera.lookAt(camera.position.x, 0, camera.position.z)
