@@ -34,6 +34,8 @@ export interface Table {
   /** Fraction of the viewport's height that the copy covers from the top (portrait screens frame the spread below it). */
   cover: number
   update(dt: number, time: number, width: number, height: number, reduced: boolean): void
+  /** Follows the quality tier: the window light's shadow map shrinks on lower tiers. */
+  setQuality(quality: Quality): void
   dispose(): void
 }
 
@@ -64,7 +66,8 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
   const sun = new THREE.DirectionalLight('#fff1dc', 3.9)
   sun.position.set(-70, 150, -55)
   sun.castShadow = true
-  sun.shadow.mapSize.setScalar(quality === 'high' ? 2048 : quality === 'medium' ? 1536 : 1024)
+  const shadowSize = (q: Quality) => (q === 'high' ? 2048 : q === 'medium' ? 1536 : 1024)
+  sun.shadow.mapSize.setScalar(shadowSize(quality))
   sun.shadow.camera.left = -85
   sun.shadow.camera.right = 85
   sun.shadow.camera.top = 60
@@ -182,13 +185,12 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
   disposers.push(bottle.dispose)
   add(lying, -14, 21, -0.32, 0.87, -1)
   const glass = createDooghGlass(quality)
-  // Real refraction — the cloth seen through the walls — is what makes it
-  // read as a glass from above. The low tier keeps plain see-through glass.
-  if (quality === 'low') {
-    glass.group.traverse((o) => {
-      if (o instanceof THREE.Mesh && (o.material as THREE.MeshPhysicalMaterial).transmission > 0) cheapGlass(o.material as THREE.MeshPhysicalMaterial)
-    })
-  }
+  // From above the walls show the lit cloth through themselves. Transmission
+  // did that by drawing the whole table a second time every frame (more than
+  // half its cost); a pale, glossy, nearly opaque wall reads the same.
+  glass.group.traverse((o) => {
+    if (o instanceof THREE.Mesh && (o.material as THREE.MeshPhysicalMaterial).transmission > 0) wallGlass(o.material as THREE.MeshPhysicalMaterial)
+  })
   disposers.push(glass.dispose)
   add(glass.group, 2, 6, 0, 0.9, -1)
 
@@ -206,7 +208,15 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
   const DOWN = 0.55
   const UP = 0.35
   let settleFrames = 3
+  const setQuality = (q: Quality) => {
+    const size = shadowSize(q)
+    if (sun.shadow.mapSize.x === size) return
+    // three.js resizes the map on the next shadow render.
+    sun.shadow.mapSize.setScalar(size)
+    renderer.shadowMap.needsUpdate = true
+  }
   const self: Table = {
+    setQuality,
     scene,
     camera,
     progress: 0,
@@ -277,6 +287,21 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
 
 /** The bottle's real height in centimetres (cap included). */
 const BOTTLE_CM = 21.6
+
+/** A glass wall seen from above, without transmission: the cloth's cream through clear glass, and its highlights. */
+function wallGlass(m: THREE.MeshPhysicalMaterial) {
+  m.transmission = 0
+  m.color.set('#f6efe1')
+  // Light comes through glass from every side: its far wall never sinks into shade.
+  m.emissive.set('#2a261f')
+  m.transparent = true
+  m.opacity = 0.82
+  m.roughness = 0.08
+  m.clearcoat = 1
+  m.clearcoatRoughness = 0.04
+  m.envMapIntensity = 1.5
+  m.needsUpdate = true
+}
 
 function cheapGlass(m: THREE.MeshPhysicalMaterial) {
   m.transmission = 0

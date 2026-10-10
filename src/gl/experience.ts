@@ -9,7 +9,7 @@
  */
 import * as THREE from 'three'
 import { Phase, type Stage } from '@veyra/core'
-import { threeLayer, type ThreeLayer } from '@veyra/core/three'
+import { threeLayer, warmUp, type ThreeLayer } from '@veyra/core/three'
 import type { Landscape } from './landscape'
 import { createStudio, type Quality, type Studio } from './studio'
 import type { Table } from './table'
@@ -44,17 +44,24 @@ export function createExperience(stage: Stage): Experience {
   // Read the tier after the layer: on a software renderer it starts low.
   const tier: Quality = stage.quality?.tier.value ?? 'medium'
   const { renderer, scene, camera } = layer
+  // Reading back every program's compile log waits for the driver: only
+  // in development and in captures (where the checks look for errors).
+  renderer.debug.checkShaderErrors = import.meta.env.DEV || new URLSearchParams(location.search).has('capture')
   renderer.setClearColor(0x000000, 0)
   renderer.toneMapping = THREE.NeutralToneMapping
   renderer.toneMappingExposure = 1
-  const transmission = (t: Quality) => (t === 'high' ? 1 : t === 'medium' ? 0.75 : 0.5)
+  // The bottle's glass is frosted: it reads its transmission from blurred
+  // levels, so a half-size target looks the same at a quarter of the cost.
+  const transmission = (t: Quality) => (t === 'high' ? 0.6 : 0.5)
   renderer.transmissionResolutionScale = transmission(tier)
+  const studio = createStudio(renderer, scene, tier)
+  // Every world follows the tier as it changes, not only when it is built.
   stage.quality?.tier.subscribe((t) => {
     renderer.transmissionResolutionScale = transmission(t)
+    studio.setQuality(t)
     exp.landscape?.setQuality(t)
+    exp.table?.setQuality(t)
   })
-
-  const studio = createStudio(renderer, scene, tier)
   const veil = createVeil()
 
   const pending = new Map<string, Promise<void>>()
@@ -69,13 +76,19 @@ export function createExperience(stage: Stage): Experience {
     prepare(which) {
       let p = pending.get(which)
       if (!p) {
+        // Built and warmed up (programs compiled, textures uploaded, shadows
+        // drawn) ahead of time, so the first frame showing it doesn't stall.
         p =
           which === 'landscape'
             ? import('./landscape').then(async ({ createLandscape }) => {
-                exp.landscape = await createLandscape(renderer, stage.quality?.tier.value ?? tier)
+                const landscape = await createLandscape(renderer, stage.quality?.tier.value ?? tier)
+                await warmUp(renderer, landscape.scene, landscape.camera)
+                exp.landscape = landscape
               })
             : import('./table').then(async ({ createTable }) => {
-                exp.table = await createTable(renderer, tier)
+                const table = await createTable(renderer, stage.quality?.tier.value ?? tier)
+                await warmUp(renderer, table.scene, table.camera)
+                exp.table = table
               })
         pending.set(which, p)
       }

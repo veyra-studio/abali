@@ -71,6 +71,11 @@ export interface Studio {
   update(dt: number, time: number, pointer: { snx: number; sny: number; vx: number; vy: number } | null, reduced: boolean): void
   /** Renders the reflection and contact shadow (call before rendering the scene). */
   prepare(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera): void
+  /**
+   * Follows the quality tier: the low tier drops the floor's reflection,
+   * frosts the glass without transmission and traces the ice more simply.
+   */
+  setQuality(quality: Quality): void
   dispose(): void
 }
 
@@ -101,19 +106,39 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
   fill.position.set(900, 200, 600)
   scene.add(key, fill)
 
-  // Glossy floor and contact shadow (skipped on the low tier).
+  // Glossy floor (not on the low tier) and contact shadow. The floor
+  // reflects the doogh, the label and the ice, but not the glass shell: its
+  // transmission would draw the bottle's inside once more in the mirror,
+  // for a rim the fading reflection barely shows.
   let floor: ReflectiveFloor | null = null
-  let shadow: ContactShadow | null = null
-  if (quality !== 'low') {
+  let floorResolution = 0
+  const reflect = () => {
     bottle.group.traverse((o) => o.layers.enable(REFLECT))
+    bottle.glassMesh.layers.disable(REFLECT)
     ice.group.traverse((o) => o.layers.enable(REFLECT))
-    floor = new ReflectiveFloor({ width: 12000, depth: 12000, strength: 0.38, fade: [0, 0.28], blur: 4, layer: REFLECT, resolution: quality === 'high' ? 0.5 : 0.35 })
+  }
+  reflect()
+  const setFloor = (q: Quality) => {
+    const resolution = q === 'high' ? 0.5 : q === 'medium' ? 0.35 : 0
+    if (resolution === floorResolution) return
+    floorResolution = resolution
+    if (floor) {
+      scene.remove(floor.mesh)
+      floor.dispose()
+      floor = null
+    }
+    if (resolution === 0) return
+    floor = new ReflectiveFloor({ width: 12000, depth: 12000, strength: 0.38, fade: [0, 0.28], blur: 4, layer: REFLECT, resolution })
     scene.add(floor.mesh)
   }
-  shadow = new ContactShadow({ width: 1, depth: 1, far: 1, opacity: 0.8, blur: 3, resolution: quality === 'low' ? 256 : 512 })
-  shadow.cast(bottle.body)
-  shadow.cast(bottle.cap)
-  shadow.cast(ice.group)
+  setFloor(quality)
+  const shadow = new ContactShadow({ width: 1, depth: 1, far: 1, opacity: 0.8, blur: 3, resolution: quality === 'low' ? 256 : 512 })
+  const cast = () => {
+    shadow.cast(bottle.body)
+    shadow.cast(bottle.cap)
+    shadow.cast(ice.group)
+  }
+  cast()
   scene.add(shadow.object)
 
   const state: StudioState = {
@@ -151,7 +176,6 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
   let shiver = 0
 
   let shadowKey = ''
-  let shadowAge = 0
 
   // --- The cap -----------------------------------------------------------
   // On the bottle it is a child of the bottle. Once it snaps off it is a
@@ -423,12 +447,10 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
         floor.setFade(0, 0.3 * S)
         floor.mesh.visible = state.floor > 0.01
       }
-      if (shadow) {
-        // The shadow plane follows the bottle, sized to it.
-        shadow.object.position.set(state.x, state.baseY + 0.4, 0)
-        shadow.resize(S * 1.6, S * 1.6, S * 0.5)
-        shadow.opacity = 0.8 * state.floor
-      }
+      // The shadow plane follows the bottle, sized to it.
+      shadow.object.position.set(state.x, state.baseY + 0.4, 0)
+      shadow.resize(S * 1.6, S * 1.6, S * 0.5)
+      shadow.opacity = 0.8 * state.floor
 
       // Opener: comes in (scrolled, or on its own), hooks, levers, withdraws.
       if (autoOn) auto = reduced ? 1 : Math.min(1, auto + dt / 0.55)
@@ -505,18 +527,24 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
       plume.mesh.rotation.set(0, -bottle.group.rotation.y, 0)
       foam.setLevel(state.foam, time)
     },
+    setQuality(q) {
+      setFloor(q)
+      bottle.setQuality(q)
+      ice.setQuality(q)
+      reflect()
+      cast()
+    },
     prepare(renderer, camera) {
       if (!state.visible) return
       if (floor && floor.mesh.visible) floor.update(renderer, scene, camera)
-      if (shadow && state.floor > 0.01) {
+      if (state.floor > 0.01) {
         // A turned bottle casts the same shadow as it spins: re-render only
-        // when it moves, tilts or is scaled (and now and then for the ice).
+        // when something that casts moves, tilts or is scaled.
         const r = bottle.group.rotation
         const c = capRig.position
-        const key = `${Math.round(state.x)}|${Math.round(state.baseY)}|${Math.round(state.scale)}|${r.x.toFixed(3)}|${r.z.toFixed(3)}|${phase}|${c.x.toFixed(3)}|${c.y.toFixed(3)}|${c.z.toFixed(3)}|${capRig.quaternion.w.toFixed(3)}`
-        if (key !== shadowKey || ++shadowAge > 30) {
+        const key = `${Math.round(state.x)}|${Math.round(state.baseY)}|${Math.round(state.scale)}|${r.x.toFixed(3)}|${r.z.toFixed(3)}|${phase}|${c.x.toFixed(3)}|${c.y.toFixed(3)}|${c.z.toFixed(3)}|${capRig.quaternion.w.toFixed(3)}|${ice.group.scale.x.toFixed(3)}|${ice.group.children.length}`
+        if (key !== shadowKey) {
           shadowKey = key
-          shadowAge = 0
           shadow.update(renderer, scene)
         }
       }
@@ -528,7 +556,7 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
       plume.dispose()
       foam.dispose()
       floor?.dispose()
-      shadow?.dispose()
+      shadow.dispose()
       scene.environment?.dispose()
     },
   }

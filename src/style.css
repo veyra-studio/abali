@@ -24,6 +24,10 @@
   --font-text: 'Estedad Variable', 'Vazirmatn', system-ui, sans-serif;
 
   --gutter: clamp(1.1rem, 4.2vw, 3.75rem);
+  /* On very wide screens the picture keeps to a frame at most twice as wide
+     as it is tall, centered: the copy stays near the bottle. */
+  --frame: min(100vw, 200vh);
+  --side: calc(var(--gutter) + (100vw - var(--frame)) / 2);
   --hud-h: 4.25rem;
   --fg: var(--milk);
   --muted: color-mix(in srgb, var(--fg) 72%, transparent);
@@ -55,11 +59,19 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   overflow-x: clip;
-  /* The studio: a pool of blue light on black (the canvas is transparent here). */
-  background:
-    radial-gradient(120% 80% at 50% 40%, var(--studio-1) 0%, var(--studio-2) 52%, var(--ink) 100%) fixed,
-    var(--ink);
+  background: var(--ink);
   transition: color 0.6s ease;
+}
+/* The studio: a pool of blue light on black (the canvas is transparent here).
+   A fixed layer of its own rather than a fixed background, which browsers
+   repaint on every scroll. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(120% 80% at 50% 40%, var(--studio-1) 0%, var(--studio-2) 52%, var(--ink) 100%);
 }
 
 a {
@@ -131,14 +143,18 @@ main {
   position: relative;
   z-index: 2;
 }
+/* Blended over everything that moves, every frame: weak devices go without. */
 .grain {
   position: fixed;
-  inset: -50%;
+  inset: 0;
   z-index: 3;
   pointer-events: none;
   opacity: 0.05;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
   mix-blend-mode: overlay;
+}
+html[data-quality='low'] .grain {
+  display: none;
 }
 
 /* ------------------------------------------------------------------ */
@@ -225,6 +241,19 @@ html.is-ready main {
   color: var(--fg);
   pointer-events: none;
   transition: color 0.6s ease;
+}
+/* Over the footer, which scrolls under it, the HUD gets a dark ground. */
+.hud::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 -1.6rem;
+  z-index: -1;
+  background: linear-gradient(var(--ink) 55%, rgb(5 7 11 / 0));
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+html.hud-over-footer .hud::before {
+  opacity: 1;
 }
 .hud > * {
   pointer-events: auto;
@@ -319,7 +348,7 @@ html.is-ready main {
 /* ------------------------------------------------------------------ */
 .chapter {
   position: relative;
-  padding-inline: var(--gutter);
+  padding-inline: var(--side);
   overflow-x: clip;
 }
 .pinned {
@@ -332,7 +361,7 @@ html.is-ready main {
   height: 100vh;
   height: 100svh;
   overflow: clip;
-  padding-inline: var(--gutter);
+  padding-inline: var(--side);
 }
 /* (.pin keeps position: sticky — never override it.) */
 .chapter > :not(.pin),
@@ -348,7 +377,7 @@ html.is-ready main {
 }
 .chapter-copy {
   position: absolute;
-  inset-inline-start: var(--gutter);
+  inset-inline-start: var(--side);
   inset-block-start: 50%;
   translate: 0 -50%;
   max-width: min(36rem, 44vw);
@@ -443,7 +472,7 @@ html.is-ready main {
 }
 .hero-slot {
   inset-block-end: 9vh;
-  inset-inline-end: 21vw;
+  inset-inline-end: calc(var(--frame) * 0.21);
   height: 76vh;
   aspect-ratio: 0.31;
   pointer-events: none;
@@ -521,7 +550,7 @@ html.is-ready main {
 }
 .shake {
   position: absolute;
-  inset-inline-start: var(--gutter);
+  inset-inline-start: var(--side);
   inset-block-end: 7vh;
   display: grid;
   grid-template-columns: auto auto;
@@ -620,6 +649,13 @@ html.is-ready main {
   box-shadow: 0 22px 44px -24px rgb(8 24 60 / calc(var(--clear) * 0.6));
   -webkit-backdrop-filter: blur(14px) saturate(1.15);
   backdrop-filter: blur(14px) saturate(1.15);
+}
+/* A blur over moving mountains is redrawn every frame: weak devices get a
+   tinted pane instead, navy under white type, white under navy. */
+html[data-quality='low'] .place {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: color-mix(in srgb, rgb(16 36 78 / 0.42) calc(var(--clear) * 100%), rgb(255 255 255 / 0.62));
 }
 .place-name {
   margin: 0 0 0.35rem;
@@ -729,6 +765,9 @@ html.is-ready main {
   /* Only over the table, never over the mist before it. */
   opacity: var(--table-o, 0);
 }
+html[data-quality='low'] .sofreh-chapter .pin::before {
+  mix-blend-mode: normal;
+}
 
 /* ------------------------------------------------------------------ */
 /* 05 — Finale                                                         */
@@ -762,7 +801,7 @@ html.is-ready main {
 }
 .finale-slot {
   inset-block-end: 10vh;
-  inset-inline-end: 24vw;
+  inset-inline-end: calc(var(--frame) * 0.24);
   height: 68vh;
   aspect-ratio: 0.31;
   pointer-events: none;
@@ -822,7 +861,7 @@ html.is-ready main {
 /* Footer                                                              */
 /* ------------------------------------------------------------------ */
 .site-footer {
-  padding: clamp(3rem, 8vw, 6rem) var(--gutter) clamp(2rem, 5vw, 3.5rem);
+  padding: clamp(3rem, 8vw, 6rem) var(--side) clamp(2rem, 5vw, 3.5rem);
   background: var(--ink);
   color: var(--milk);
   border-top: 1px solid rgb(255 255 255 / 0.08);
@@ -919,6 +958,74 @@ html.no-webgl .shake {
   .sofreh-copy {
     inset-block: calc(var(--hud-h) + 3vh) auto;
     translate: none;
+  }
+}
+/* Short, wide screens (a phone on its side): smaller sound words, copy
+   from the top, the place card beside «آخیش!», a smaller menu card. */
+@media (min-width: 761px) and (max-height: 520px) {
+  .chapter-copy {
+    inset-block: calc(var(--hud-h) + 1vh) auto;
+    translate: none;
+  }
+  .sound-word {
+    font-size: clamp(3rem, 25vh, 6.5rem);
+    line-height: 1.15;
+  }
+  .chapter-line {
+    margin-top: 0.15rem;
+    font-size: 1.05rem;
+  }
+  .shake {
+    inset-block-end: 4vh;
+  }
+  .shake-hint {
+    font-size: 1.1rem;
+  }
+  .akhish-chapter .chapter-copy {
+    inset-block: calc(var(--hud-h) + 1vh) 4vh;
+    inset-inline-end: var(--side);
+    max-width: none;
+    display: grid;
+    grid-template-columns: auto minmax(0, 21rem);
+    grid-template-rows: auto 1fr;
+    column-gap: 2rem;
+  }
+  .akhish-chapter .chapter-no {
+    grid-area: 1 / 1;
+  }
+  .akhish-word {
+    grid-area: 2 / 1;
+    align-self: start;
+  }
+  .place {
+    grid-area: 1 / 2 / 3 / 3;
+    align-self: end;
+    margin-top: 0;
+    padding: 0.8rem 1rem 0.85rem;
+  }
+  .place-name {
+    font-size: 1.9rem;
+    line-height: 1.4;
+  }
+  .akhish-line {
+    font-size: 0.95rem;
+    line-height: 1.7;
+  }
+  .sofreh-copy {
+    inset-block: calc(var(--hud-h) + 1vh) auto;
+    translate: none;
+    padding: 0.9rem 1.1rem;
+  }
+  .sofreh-title {
+    font-size: 1.9rem;
+    margin-bottom: 0.5rem;
+  }
+  .menu li {
+    font-size: 0.85rem;
+  }
+  .sofreh-punch {
+    margin-top: 0.5rem;
+    font-size: 1.25rem;
   }
 }
 @media (max-width: 760px) {
@@ -1044,6 +1151,13 @@ html.no-webgl .shake {
   }
   .footer-mark {
     grid-row: auto;
+  }
+}
+/* Short phones: the bottle a little higher and smaller, so the button sits below the ice. */
+@media (max-width: 760px) and (max-height: 700px) {
+  .finale-slot {
+    inset-block-end: 25vh;
+    height: 40vh;
   }
 }
 

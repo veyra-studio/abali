@@ -22,6 +22,19 @@ import type { AbaliSound } from './sound'
 
 const $ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel)!
 const $$ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) => Array.from(root.querySelectorAll<T>(sel))
+/**
+ * Writes a style property only when its value changes: the per-frame code
+ * below sets the same values most frames, and every write costs the
+ * browser style work.
+ */
+const written = new WeakMap<HTMLElement, Map<string, string>>()
+const put = (el: HTMLElement, prop: string, value: string) => {
+  let last = written.get(el)
+  if (!last) written.set(el, (last = new Map()))
+  if (last.get(prop) === value) return
+  last.set(prop, value)
+  el.style.setProperty(prop, value)
+}
 /** Smootherstep: starts and ends at rest — camera moves without a jolt. */
 const smooth = (t: number) => t * t * t * (t * (t * 6 - 15) + 10)
 const easeOut = (t: number) => 1 - (1 - t) ** 3
@@ -42,6 +55,11 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
   const vw = () => stage.viewport.w
   const vh = () => stage.viewport.h
   const mobile = () => vw() < 760
+  /** Width of the picture's frame: at most twice the height (CSS `--frame`). */
+  const frame = () => Math.min(vw(), 2 * vh())
+  // The reading direction, read once: it never changes, and reading it
+  // (computed style) every frame would force the browser to restyle.
+  const forward = inlineSign(html)
 
   let theme: Theme = 'studio'
   const setTheme = (t: Theme) => {
@@ -67,6 +85,18 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     }
     stage.scene(section, { start: 'top center', end: 'bottom center', onEnter: enter, onEnterBack: enter })
   }
+  // Over the footer, which scrolls under the HUD, the HUD gets a dark ground.
+  const hud = $('.hud')
+  const footer = $('.site-footer')
+  let hudHeight = hud.offsetHeight
+  stage.onRefresh(() => (hudHeight = hud.offsetHeight))
+  let overFooter = false
+  stage.onFrame(() => {
+    const over = stage.rects.view(footer).top < hudHeight
+    if (over === overFooter) return
+    overFooter = over
+    html.classList.toggle('hud-over-footer', over)
+  })
   /** Progress of a section scrolling in: its top from the viewport's bottom to its top. */
   const scrollIn = (sel: string, onProgress: (p: number) => void) => stage.scene(sel, { start: 'top bottom', end: 'top top', onProgress })
 
@@ -87,13 +117,13 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
   const capClose = (): Place => {
     const S = vh() * (mobile() ? 1.3 : 2.35)
     const capY = vh() * (mobile() ? -0.06 : 0.07)
-    return { x: mobile() ? 0 : vw() * 0.17 * inlineSign(html), baseY: capY - 0.983 * S, scale: S }
+    return { x: mobile() ? 0 : frame() * 0.17 * forward, baseY: capY - 0.983 * S, scale: S }
   }
   /** The open neck, a little further back, room for the wisp above it. */
   const neckClose = (): Place => {
     const S = vh() * (mobile() ? 1.2 : 1.85)
     const mouthY = vh() * (mobile() ? -0.02 : -0.1)
-    return { x: mobile() ? 0 : vw() * 0.17 * inlineSign(html), baseY: mouthY - BOTTLE.rim * S, scale: S }
+    return { x: mobile() ? 0 : frame() * 0.17 * forward, baseY: mouthY - BOTTLE.rim * S, scale: S }
   }
 
   // ------------------------------------------------------------------
@@ -109,12 +139,12 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     onProgress(p) {
       heroOut = p
       if (reduced()) {
-        heroTitle.style.opacity = String(1 - range(p, 0.2, 0.6))
+        put(heroTitle, 'opacity', String(1 - range(p, 0.2, 0.6)))
         return
       }
-      heroTitle.style.transform = `translate3d(0, ${-p * 14}vh, 0)`
-      heroTitle.style.opacity = String(1 - range(p, 0.15, 0.6))
-      for (const el of heroFade) el.style.opacity = String(1 - range(p, 0, 0.35))
+      put(heroTitle, 'transform', `translate3d(0, ${-p * 14}vh, 0)`)
+      put(heroTitle, 'opacity', String(1 - range(p, 0.15, 0.6)))
+      for (const el of heroFade) put(el, 'opacity', String(1 - range(p, 0, 0.35)))
     },
   })
   let heroLift = reduced() ? 0 : 1
@@ -171,6 +201,7 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
   const pisSection = $('#pis')
   const pisWord = $('.pis-word')
   const pisSplit = splitText(pisWord, { type: 'chars' })
+  const pisForward = inlineSign(pisWord)
   const hint = $('.shake-hint')
   const gauge = $('.gauge')
   const shakeBtn = $<HTMLButtonElement>('.shake-btn')
@@ -248,7 +279,8 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     if (key !== coverKey) {
       coverKey = key
       const pin = card.offsetParent as HTMLElement | null
-      cover = pin && card.offsetTop < pin.clientHeight * 0.3 ? Math.min(0.6, (card.offsetTop + card.offsetHeight) / pin.clientHeight) : 0
+      // Only where it spans the width (portrait); beside the table it covers nothing.
+      cover = pin && card.offsetTop < pin.clientHeight * 0.3 && card.offsetWidth > pin.clientWidth * 0.6 ? Math.min(0.6, (card.offsetTop + card.offsetHeight) / pin.clientHeight) : 0
     }
     return cover
   }
@@ -314,6 +346,7 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
   const fizzSpring = new Spring(0, { stiffness: 40, damping: 12 })
   const foamSpring = new Spring(0, { stiffness: 30, damping: 9 })
   let hiss = 0
+  let gaugePercent = -1
   let gulped = false
   stage.onFrame((frame) => {
     const dt = frame.delta
@@ -327,17 +360,17 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     if (r) taqShow.snap(taqShow.target)
     const show = clamp(taqShow.step(dt))
     const s = slam.step(dt)
-    taqWord.style.opacity = String(show)
-    taqWord.style.transform = r ? 'none' : `scale(${0.92 + show * 0.08 + s * 0.02}) rotate(${s * -0.25}deg)`
+    put(taqWord, 'opacity', show.toFixed(3))
+    put(taqWord, 'transform', r || show === 0 ? 'none' : `scale(${(0.92 + show * 0.08 + s * 0.02).toFixed(4)}) rotate(${(s * -0.25).toFixed(3)}deg)`)
 
-    // «پیسسس» spreads like escaping gas.
-    if (!r) {
+    // «پیسسس» spreads like escaping gas (only while its chapter is on screen).
+    if (!r && pisActive) {
       const n = pisSplit.chars.length
       hiss = lerp(hiss, 0.3 + pressure * 1.2, 1 - Math.exp(-dt * 4))
       pisSplit.chars.forEach((c, i) => {
         const k = (i - (n - 1) / 2) / n
         const drift = Math.sin(time * 1.7 + i * 1.3) * 0.02 * hiss
-        c.style.transform = `translate3d(${(k * hiss * 0.18 + drift) * inlineSign(pisWord)}em, ${Math.sin(time * 2.1 + i) * 0.03 * hiss}em, 0)`
+        c.style.transform = `translate3d(${(k * hiss * 0.18 + drift) * pisForward}em, ${Math.sin(time * 2.1 + i) * 0.03 * hiss}em, 0)`
       })
     }
 
@@ -363,16 +396,20 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     } else {
       setHint(pressure > 0.7 ? 2 : pressure > 0.3 ? 1 : 0)
     }
-    gauge.style.setProperty('--pressure', pressure.toFixed(3))
-    gauge.setAttribute('aria-valuenow', String(Math.round(pressure * 100)))
-    gauge.setAttribute('aria-valuetext', `${toPersianDigits(Math.round(pressure * 100))} درصد`)
+    put(gauge, '--pressure', pressure.toFixed(3))
+    const percent = Math.round(pressure * 100)
+    if (percent !== gaugePercent) {
+      gaugePercent = percent
+      gauge.setAttribute('aria-valuenow', String(percent))
+      gauge.setAttribute('aria-valuetext', `${toPersianDigits(percent)} درصد`)
+    }
 
     // The bottle boils over: by shaking, or by scrolling on.
     const burstFlood = burst >= 0 ? (burst < 0.7 ? easeOut(burst / 0.7) : 1 - smooth(range(burst, 1.6, 3.0))) : 0
     const scrollFlood = smooth(range(pisP, 0.62, 1))
     const flood = Math.max(burstFlood, scrollFlood)
-    pisSection.style.setProperty('--shake-o', String(range(pisP, 0.06, 0.14) * (1 - range(flood, 0.2, 0.45))))
-    pisSection.style.setProperty('--copy-o', String(1 - range(flood, 0.55, 0.85)))
+    put(pisSection, '--shake-o', (range(pisP, 0.06, 0.14) * (1 - range(flood, 0.2, 0.45))).toFixed(3))
+    put(pisSection, '--copy-o', (1 - range(flood, 0.55, 0.85)).toFixed(3))
 
     // «آخیش» stretches with the scroll, a letter's breath at a time.
     const stretchTarget = r ? 0 : (mobile() ? 5 : 9) * smooth(range(akhishP, 0.04, 0.5))
@@ -423,9 +460,9 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
       themeNow = flood > 0.55 ? 'snow' : 'studio'
     }
     setTheme(themeNow)
-    sofrehSection.style.setProperty('--table-o', String(world === 'table' ? 1 - mist : 0))
+    put(sofrehSection, '--table-o', (world === 'table' ? 1 - mist : 0).toFixed(3))
     // «آخیش» is navy while the mist is thick and turns white over the clear valley.
-    akhishSection.style.setProperty('--clear', String(exp && world === 'landscape' ? smooth(range(mist, 0.55, 0.25)) : 0))
+    put(akhishSection, '--clear', (exp && world === 'landscape' ? smooth(range(mist, 0.55, 0.25)) : 0).toFixed(3))
     if (!exp) return
 
     const veil = exp.veil.uniforms

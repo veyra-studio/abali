@@ -25,8 +25,8 @@ interface Shape {
   radiusBottom: number
   /** Narrower toward the bottom (freezer trays taper). */
   taper: number
-  /** Melt: amplitude of the faces' gentle unevenness. */
-  ripple: number
+  /** Melt: how much the faces' gentle waves tilt the surface (relief). */
+  melt: number
   seed: number
 }
 
@@ -42,21 +42,16 @@ function sdf(s: Shape, x: number, y: number, z: number): number {
   const dy = Math.abs(y) - (s.half.y - r)
   const dz = Math.abs(z / k) - (s.half.z - r)
   const outside = Math.hypot(Math.max(dx, 0), Math.max(dy, 0), Math.max(dz, 0))
-  const u = s.seed
-  const ripple = s.ripple * Math.sin((x / s.half.x) * 2.3 + u) * Math.sin((y / s.half.x) * 2.1 + u * 1.7) * Math.sin((z / s.half.x) * 2.5 + u * 2.3)
-  return (outside + Math.min(Math.max(dx, dy, dz), 0) - r) * Math.min(k, 1) - ripple
+  return (outside + Math.min(Math.max(dx, dy, dz), 0) - r) * Math.min(k, 1)
 }
 const sdfGlsl = /* glsl */ `
 uniform vec4 iceBox;   // half extents; corner radius at the bottom
-uniform vec4 iceShape; // taper, ripple, seed, corner radius at the top
+uniform vec4 iceShape; // taper, melt (relief), seed, corner radius at the top
 float solidSdf(vec3 p) {
   float k = 1.0 - iceShape.x * (0.5 - 0.5 * clamp(p.y / iceBox.y, -1.0, 1.0));
   float r = mix(iceBox.w, iceShape.w, smoothstep(-iceBox.y, iceBox.y, p.y));
   vec3 d = vec3(abs(p.x / k), abs(p.y), abs(p.z / k)) - (iceBox.xyz - r);
-  vec3 q = p / iceBox.x;
-  float u = iceShape.z;
-  float ripple = iceShape.y * sin(q.x * 2.3 + u) * sin(q.y * 2.1 + u * 1.7) * sin(q.z * 2.5 + u * 2.3);
-  return (length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0) - r) * min(k, 1.0) - ripple;
+  return (length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0) - r) * min(k, 1.0);
 }
 `
 // The rounded box's own normal (from the closest point of its core):
@@ -73,13 +68,12 @@ vec3 solidNormal(vec3 p) {
   return l > 1e-6 ? n / l : vec3(0.0, 1.0, 0.0);
 }
 `
-// Melting faces: fine waves too small for the mesh (a few sines: noise
-// would cost far more, evaluated at every bounce).
+// Melting faces: gentle waves, as relief rather than geometry (three sines:
+// noise would cost far more, evaluated at every bounce).
 const bumpGlsl = /* glsl */ `
 vec3 solidBump(vec3 p, vec3 n) {
   vec3 q = p / iceBox.x * 6.0 + iceShape.z;
-  vec3 g = vec3(sin(q.y * 1.3 + q.z * 0.7), sin(q.z * 1.1 - q.x * 0.9 + 1.7), sin(q.x * 1.2 + q.y * 0.8 + 3.1)) * 0.045
-    + vec3(sin(q.z * 3.7 + q.y * 2.1), sin(q.x * 3.3 - q.z * 2.9 + 0.6), sin(q.y * 3.9 + q.x * 2.3 + 2.2)) * 0.016;
+  vec3 g = vec3(sin(q.y * 1.3 + q.z * 0.7), sin(q.z * 1.1 - q.x * 0.9 + 1.7), sin(q.x * 1.2 + q.y * 0.8 + 3.1)) * iceShape.y;
   return normalize(n + g - n * dot(g, n));
 }
 `
@@ -96,16 +90,16 @@ float iceCloud(vec3 q) {
   float r2 = dot(u, u);
   if (r2 > 1.0) return 0.0;
   vec3 w = q / iceBox.x * 3.0 + iceShape.z;
-  float wisp = 0.6 + 0.4 * sin(w.x * 2.1 + sin(w.y * 3.3) * 1.6) * sin(w.z * 2.7 + sin(w.x * 2.9 + w.y) * 1.6);
+  float wisp = 0.6 + 0.4 * sin(w.x * 2.1 + w.y * 1.4) * sin(w.z * 2.7 - w.x * 1.1);
   return (1.0 - r2) * (1.0 - r2) * wisp;
 }
 void solidInside(vec3 p, vec3 d, float len, int bounce, inout vec3 light, inout vec3 through) {
   float depth = iceHaze * len / iceBox.x;
   // The heart and the bubbles along the way in; the faint haze on every run.
   if (bounce == 0) {
-    float h = len / 4.0;
+    float h = len / 3.0;
     float cloud = 0.0;
-    for (int i = 0; i < 4; i++) cloud += iceCloud(p + d * (h * (float(i) + 0.5)));
+    for (int i = 0; i < 3; i++) cloud += iceCloud(p + d * (h * (float(i) + 0.5)));
     depth += iceCore.w * cloud * h / iceBox.x;
   }
   float a = 1.0 - exp(-depth);
@@ -130,20 +124,34 @@ void solidInside(vec3 p, vec3 d, float len, int bounce, inout vec3 light, inout 
 }
 `
 
-/** A rounded box projected onto the solid, its vertices crowded toward the edges where it curves. */
-function cubeGeometry(s: Shape, segments: number): THREE.BufferGeometry {
-  let geo: THREE.BufferGeometry = new THREE.BoxGeometry(2, 2, 2, segments, segments, segments)
+/**
+ * A rounded box projected onto the solid. Each flat face is one large quad;
+ * only the rounded band along the edges is subdivided (`band` segments on
+ * each side). Large triangles matter here: the GPU shades in 2×2 blocks, so
+ * small ones would run the costly ray trace several times per pixel.
+ */
+function cubeGeometry(s: Shape, band: number): THREE.BufferGeometry {
+  const n = 2 * band + 1
+  let geo: THREE.BufferGeometry = new THREE.BoxGeometry(2, 2, 2, n, n, n)
   geo.deleteAttribute('normal')
   geo.deleteAttribute('uv')
   geo = mergeVertices(geo)
   const pos = geo.attributes.position as THREE.BufferAttribute
   const normals = new Float32Array(pos.count * 3)
   const r = (s.radiusTop + s.radiusBottom) / 2
+  const reach = Math.max(s.radiusTop, s.radiusBottom) * 1.15
   const inner = new THREE.Vector3(s.half.x - r, s.half.y - r, s.half.z - r)
   const p = new THREE.Vector3()
   const c = new THREE.Vector3()
   const g = new THREE.Vector3()
-  const warp = (t: number) => Math.sin((t * Math.PI) / 2)
+  // Grid line i of n along an axis of half size h: the band's lines spread
+  // over the curve, then one span across the flat middle.
+  const place = (t: number, h: number) => {
+    const i = Math.round(((t + 1) / 2) * n)
+    const w = Math.min(0.45, reach / h)
+    const u = i <= band ? -1 + (w * i) / band : 1 - (w * (n - i)) / band
+    return u * h
+  }
   const e = s.half.x * 1e-3
   const grad = (q: THREE.Vector3) =>
     g.set(
@@ -152,10 +160,10 @@ function cubeGeometry(s: Shape, segments: number): THREE.BufferGeometry {
       sdf(s, q.x, q.y, q.z + e) - sdf(s, q.x, q.y, q.z - e),
     ).normalize()
   for (let i = 0; i < pos.count; i++) {
-    p.set(warp(pos.getX(i)) * s.half.x, warp(pos.getY(i)) * s.half.y, warp(pos.getZ(i)) * s.half.z)
+    p.set(place(pos.getX(i), s.half.x), place(pos.getY(i), s.half.y), place(pos.getZ(i), s.half.z))
     c.copy(p).clamp(inner.clone().negate(), inner)
     p.sub(c).normalize().multiplyScalar(r).add(c)
-    // Onto the solid itself (taper and melt): a few Newton steps.
+    // Onto the solid itself (taper, top and bottom radii): a few Newton steps.
     for (let k = 0; k < 4; k++) p.addScaledVector(grad(p), -sdf(s, p.x, p.y, p.z))
     pos.setXYZ(i, p.x, p.y, p.z)
     grad(p)
@@ -200,7 +208,7 @@ export function createIceCube(options: IceCubeOptions): IceCube {
     radiusBottom,
     radiusTop: radiusBottom * (1.25 + rand() * 0.35),
     taper: 0.05 + rand() * 0.05,
-    ripple: size * 0.012,
+    melt: 0.05,
     seed: options.seed,
   }
   const core = new THREE.Vector4((rand() - 0.5) * size * 0.08, -size * 0.03, (rand() - 0.5) * size * 0.08, options.cloud * 5.6)
@@ -216,35 +224,35 @@ export function createIceCube(options: IceCubeOptions): IceCube {
   // Opaque, but drawn with the transparent objects so three.js' transmission
   // pre-pass (for other glass) doesn't trace the ice a second time.
   const material = new THREE.MeshPhysicalMaterial({ color: 0x000000, roughness: 0.04, metalness: 0, ior: IOR, specularIntensity: 0, envMapIntensity: 1, transparent: true })
-  const margin = shape.ripple * 2
-  // A box inside the solid: within the rounded corners, the taper and the melt.
+  // A box inside the solid: within the rounded corners and the taper.
   const corner = 0.423 * Math.max(shape.radiusTop, shape.radiusBottom)
   const narrow = 1 - shape.taper
   const half = shape.half.x
   refractiveSolid(material, {
     sdf: sdfGlsl,
     normal: normalGlsl,
-    bump: low ? undefined : bumpGlsl,
+    bump: bumpGlsl,
     inside: insideGlsl(low ? 0 : BUBBLES),
     outside: options.outside,
-    bounds: new THREE.Vector3(shape.half.x + margin, shape.half.y + margin, shape.half.z + margin),
-    inner: new THREE.Vector3((shape.half.x - corner) * narrow - shape.ripple, shape.half.y - corner - shape.ripple, (shape.half.z - corner) * narrow - shape.ripple),
+    bounds: shape.half,
+    inner: new THREE.Vector3((shape.half.x - corner) * narrow, shape.half.y - corner, (shape.half.z - corner) * narrow),
     ior: IOR,
     // Thick ice turns faintly blue.
     absorption: [0.11 / half, 0.05 / half, 0.025 / half],
-    bounces: low ? 1 : quality === 'high' ? 3 : 2,
-    steps: quality === 'high' ? 6 : 5,
+    // Two runs at least: one internal reflection is what draws ice's edges.
+    bounces: quality === 'high' ? 3 : 2,
+    steps: quality === 'high' ? 5 : 4,
     uniforms: {
       ...options.uniforms,
       iceBox: { value: new THREE.Vector4(shape.half.x, shape.half.y, shape.half.z, shape.radiusBottom) },
-      iceShape: { value: new THREE.Vector4(shape.taper, shape.ripple, shape.seed, shape.radiusTop) },
+      iceShape: { value: new THREE.Vector4(shape.taper, shape.melt, shape.seed, shape.radiusTop) },
       iceCore: { value: core },
       iceBubbles: { value: bubbles },
       iceHaze: { value: 0.085 },
       iceMist: { value: options.mist },
     },
   })
-  const mesh = new THREE.Mesh(cubeGeometry(shape, low ? 14 : 22), material)
+  const mesh = new THREE.Mesh(cubeGeometry(shape, low ? 3 : 5), material)
   return {
     mesh,
     half: shape.half,
@@ -262,6 +270,8 @@ export interface Ice {
    * the ice shows the bottle through itself.
    */
   place(foot: THREE.Vector3, scale: number): void
+  /** Rebuilds the cubes for another quality tier (fewer bounces, fewer cubes). */
+  setQuality(quality: Quality): void
   dispose(): void
 }
 
@@ -322,7 +332,6 @@ vec3 solidOutside(vec3 p, vec3 d) {
 /** Scatters the cubes around the bottle's foot. */
 export function createIce(options: { quality: Quality }): Ice {
   const group = new THREE.Group()
-  const low = options.quality === 'low'
   const world = {
     iceBottle: { value: new THREE.Vector4(0, 0, 0, 1) },
     iceBottleTop: { value: 1 },
@@ -345,28 +354,40 @@ export function createIce(options: { quality: Quality }): Ice {
     [0.27, -0.1, 0.12, 0.7, 0.5],
     [0.2, 0.41, 0.075, -0.6, 0.3],
   ]
-  const rand = seededRandom(11)
-  const cubes: IceCube[] = []
-  for (const [i, [x, z, size, turn, cloud]] of spots.slice(0, low ? 4 : spots.length).entries()) {
-    const cube = createIceCube({ size, quality: options.quality, seed: 1 + i * 7.31, cloud, mist, outside: studioOutside, uniforms: world })
-    cubes.push(cube)
-    const { mesh } = cube
-    mesh.rotation.set((rand() - 0.5) * 0.08, turn, (rand() - 0.5) * 0.08)
-    // Resting on the floor (sunk a hair, as melting ice sits in its own water).
-    mesh.updateMatrix()
-    let lowest = Infinity
-    const v = new THREE.Vector3()
-    const pos = mesh.geometry.attributes.position as THREE.BufferAttribute
-    for (let k = 0; k < pos.count; k++) lowest = Math.min(lowest, v.fromBufferAttribute(pos, k).applyMatrix4(mesh.matrix).y)
-    mesh.position.set(x, -lowest - size * 0.004, z)
-    group.add(mesh)
+  let cubes: IceCube[] = []
+  let built: Quality | null = null
+  const build = (quality: Quality) => {
+    if (quality === built) return
+    built = quality
+    for (const c of cubes) {
+      group.remove(c.mesh)
+      c.dispose()
+    }
+    cubes = []
+    const rand = seededRandom(11)
+    for (const [i, [x, z, size, turn, cloud]] of spots.slice(0, quality === 'low' ? 4 : spots.length).entries()) {
+      const cube = createIceCube({ size, quality, seed: 1 + i * 7.31, cloud, mist, outside: studioOutside, uniforms: world })
+      cubes.push(cube)
+      const { mesh } = cube
+      mesh.rotation.set((rand() - 0.5) * 0.08, turn, (rand() - 0.5) * 0.08)
+      // Resting on the floor (sunk a hair, as melting ice sits in its own water).
+      mesh.updateMatrix()
+      let lowest = Infinity
+      const v = new THREE.Vector3()
+      const pos = mesh.geometry.attributes.position as THREE.BufferAttribute
+      for (let k = 0; k < pos.count; k++) lowest = Math.min(lowest, v.fromBufferAttribute(pos, k).applyMatrix4(mesh.matrix).y)
+      mesh.position.set(x, -lowest - size * 0.004, z)
+      group.add(mesh)
+    }
   }
+  build(options.quality)
   return {
     group,
     place(foot, scale) {
       world.iceBottle.value.set(foot.x, foot.y, foot.z, 0.145 * scale)
       world.iceBottleTop.value = 0.6 * scale
     },
+    setQuality: build,
     dispose() {
       for (const c of cubes) c.dispose()
     },
