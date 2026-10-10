@@ -161,9 +161,13 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
   disposers.push(bottle.dispose)
   add(lying, -14, 21, -0.32, 0.87, -1)
   const glass = createDooghGlass(quality)
-  glass.group.traverse((o) => {
-    if (o instanceof THREE.Mesh && (o.material as THREE.MeshPhysicalMaterial).transmission > 0) cheapGlass(o.material as THREE.MeshPhysicalMaterial)
-  })
+  // Real refraction — the cloth seen through the walls — is what makes it
+  // read as a glass from above. The low tier keeps plain see-through glass.
+  if (quality === 'low') {
+    glass.group.traverse((o) => {
+      if (o instanceof THREE.Mesh && (o.material as THREE.MeshPhysicalMaterial).transmission > 0) cheapGlass(o.material as THREE.MeshPhysicalMaterial)
+    })
+  }
   disposers.push(glass.dispose)
   add(glass.group, 2, 6, 0, 0.9, -1)
 
