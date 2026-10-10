@@ -1,0 +1,233 @@
+/**
+ * «سفره»: the table, seen from above in soft window light. Dishes land one
+ * by one as the chapter scrolls — chelow with saffron and butter, two
+ * koobideh, grilled tomatoes, onion, sumac, bread and herbs — and last, the
+ * one thing that was missing: the bottle and a glass of doogh.
+ * Units: centimetres; the cloth lies on y = 0, the camera looks straight down.
+ */
+import * as THREE from 'three'
+import { ContactShadow, studioEnvironment, studioLights } from '@veyra/core/three'
+import { BOTTLE, createBottle } from './bottle'
+import { createCloth } from './food/cloth'
+import { createDooghGlass } from './food/glass'
+import { createKebab } from './food/kebab'
+import { createPlate } from './food/plate'
+import { createRice } from './food/rice'
+import { createTomato } from './food/tomato'
+import { createSides } from './food/sides'
+import type { Quality } from './studio'
+
+export interface Table {
+  scene: THREE.Scene
+  camera: THREE.PerspectiveCamera
+  /** Scroll progress through the chapter 0…1. */
+  progress: number
+  /** Number of dishes (the bottle included). */
+  count: number
+  /** How many dishes have landed at progress `p`. */
+  landed(p: number): number
+  /** How many menu items are lit at progress `p`. */
+  litMenu(p: number): number
+  update(dt: number, time: number, width: number, height: number, reduced: boolean): void
+  dispose(): void
+}
+
+interface Dish {
+  object: THREE.Object3D
+  /** Progress at which it touches the cloth. */
+  at: number
+  /** Menu item it completes (index into the menu list), or -1. */
+  menu: number
+  rest: THREE.Vector3
+  restRot: THREE.Euler
+}
+
+export async function createTable(renderer: THREE.WebGLRenderer, quality: Quality): Promise<Table> {
+  const scene = new THREE.Scene()
+  scene.background = new THREE.Color('#e9e0cc')
+  scene.environment = studioEnvironment(renderer, { lights: studioLights.soft, walls: ['#cfc7b8', '#8f877a'] })
+  scene.environmentIntensity = 0.85
+  renderer.shadowMap.enabled = true
+  renderer.shadowMap.type = THREE.VSMShadowMap
+  // Shadows are re-rendered only while something moves (see update).
+  renderer.shadowMap.autoUpdate = false
+
+  // Window light from the top left; its shadows fall toward the reader.
+  const sun = new THREE.DirectionalLight('#fff3e2', 3.4)
+  sun.position.set(-70, 150, -55)
+  sun.castShadow = true
+  sun.shadow.mapSize.setScalar(quality === 'high' ? 2048 : quality === 'medium' ? 1536 : 1024)
+  sun.shadow.camera.left = -85
+  sun.shadow.camera.right = 85
+  sun.shadow.camera.top = 60
+  sun.shadow.camera.bottom = -60
+  sun.shadow.camera.near = 20
+  sun.shadow.camera.far = 320
+  sun.shadow.radius = 5
+  sun.shadow.blurSamples = 16
+  sun.shadow.bias = -0.0004
+  scene.add(sun, new THREE.HemisphereLight('#fff8ee', '#cbbd9f', 0.32))
+
+  const disposers: Array<() => void> = []
+  // The printed border frames the spread along the top and the left.
+  const cloth = createCloth(220, 150, quality)
+  cloth.mesh.position.set(-66 + 110, 0, -38 + 75)
+  disposers.push(cloth.dispose)
+  scene.add(cloth.mesh)
+
+  const dishes: Dish[] = []
+  const add = (object: THREE.Object3D, x: number, z: number, rotY: number, at: number, menu: number, y = 0) => {
+    object.traverse((o) => {
+      if (o instanceof THREE.Mesh) {
+        o.castShadow = true
+        o.receiveShadow = true
+      }
+    })
+    object.position.set(x, y, z)
+    object.rotation.y = rotY
+    scene.add(object)
+    dishes.push({ object, at, menu, rest: object.position.clone(), restRot: object.rotation.clone() })
+  }
+
+  // Chelow kabab: the plate, rice, two skewers' worth of koobideh, tomatoes.
+  const plate = createPlate()
+  const rice = createRice({ quality })
+  const platter = new THREE.Group()
+  platter.add(plate.mesh)
+  rice.group.position.set(-5.2, plate.well, 0.6)
+  platter.add(rice.group)
+  disposers.push(plate.dispose, rice.dispose)
+  add(platter, -24, -3, 0, 0.12, 0)
+
+  const kebabs = [createKebab({ seed: 3, quality }), createKebab({ seed: 7, quality, length: 21 })]
+  kebabs.forEach((k, i) => {
+    const g = new THREE.Group()
+    g.add(k.mesh)
+    disposers.push(k.dispose)
+    add(g, -16.5 + i * 4.2, -1.5 + i * 0.6, Math.PI / 2 + 0.1 - i * 0.06, 0.2 + i * 0.06, 1, plate.well)
+  })
+  const tomatoes = [createTomato({ seed: 2, quality, size: 5.6 }), createTomato({ seed: 5, quality, size: 5 })]
+  tomatoes.forEach((t, i) => {
+    const g = new THREE.Group()
+    g.add(t.mesh)
+    disposers.push(t.dispose)
+    add(g, -17 + i * 6.4, -14.2 + i * 1.6, i * 1.3, 0.33 + i * 0.05, 2, plate.well - 0.1)
+  })
+
+  // Onion, sumac, bread and herbs.
+  const sides = createSides(quality)
+  disposers.push(sides.dispose)
+  add(sides.onion, -48, 13, 0.4, 0.45, 3)
+  add(sides.sumac, -47, -11, 0, 0.53, 4)
+  add(sides.bread, -26, -29, 0.12, 0.6, 5)
+  add(sides.herbs, 0, -20, 0.5, 0.66, 5)
+
+  // The last two: what was missing.
+  const bottle = createBottle({ quality })
+  bottle.setScale(BOTTLE_CM)
+  // Seen from above, refraction barely shows: plain see-through glass spares
+  // the table a transmission pass.
+  cheapGlass(bottle.glass)
+  const lying = new THREE.Group()
+  // On its side, label up, cap toward the far corner.
+  bottle.group.rotation.set(0, 0, Math.PI / 2)
+  bottle.group.rotateY(Math.PI / 2)
+  bottle.group.scale.setScalar(BOTTLE_CM)
+  bottle.group.position.set(BOTTLE_CM * 0.5, BOTTLE.radius * BOTTLE_CM * 0.985, 0)
+  lying.add(bottle.group)
+  disposers.push(bottle.dispose)
+  add(lying, -14, 21, -0.32, 0.87, -1)
+  const glass = createDooghGlass(quality)
+  glass.group.traverse((o) => {
+    if (o instanceof THREE.Mesh && (o.material as THREE.MeshPhysicalMaterial).transmission > 0) cheapGlass(o.material as THREE.MeshPhysicalMaterial)
+  })
+  disposers.push(glass.dispose)
+  add(glass.group, 2, 6, 0, 0.9, -1)
+
+  // Ambient occlusion where things meet the cloth: a soft contact shadow.
+  const contact = new ContactShadow({ width: 150, depth: 110, far: 9, resolution: quality === 'low' ? 512 : 1024, blur: 2.2, darkness: 1.3, opacity: 0.55, color: '#2b1d10' })
+  contact.object.position.set(-14, 0.35, 0)
+  for (const d of dishes) contact.cast(d.object)
+  scene.add(contact.object)
+
+  const camera = new THREE.PerspectiveCamera(30, 1, 10, 800)
+  camera.up.set(0, 0, -1)
+
+  const landing = 0.07
+  let lastP = -1
+  let settleFrames = 0
+  const self: Table = {
+    scene,
+    camera,
+    progress: 0,
+    count: dishes.length,
+    landed: (p) => dishes.filter((d) => p >= d.at).length,
+    litMenu(p) {
+      let lit = 0
+      for (const d of dishes) if (p >= d.at && d.menu >= 0) lit = Math.max(lit, d.menu + 1)
+      return lit
+    },
+    update(_dt, time, width, height, reduced) {
+      const p = self.progress
+      // Re-render shadows while dishes move, and for a few frames after.
+      if (p !== lastP) settleFrames = 3
+      lastP = p
+      const shadowsDirty = settleFrames > 0
+      if (settleFrames > 0) settleFrames--
+      for (const d of dishes) {
+        const t = THREE.MathUtils.clamp((p - (d.at - landing)) / landing, 0, 1)
+        const o = d.object
+        o.visible = t > 0
+        if (!o.visible) continue
+        if (reduced) {
+          o.position.copy(d.rest)
+          o.rotation.copy(d.restRot)
+          continue
+        }
+        // Lowered onto the cloth: fast, then settling.
+        const e = 1 - (1 - t) ** 3
+        const settle = Math.sin(t * Math.PI) * (1 - t) * 0.6
+        o.position.set(d.rest.x, d.rest.y + (1 - e) * 26 + settle, d.rest.z + (1 - e) * -4)
+        o.rotation.set(d.restRot.x + (1 - e) * 0.18, d.restRot.y + (1 - e) * -0.25, d.restRot.z)
+      }
+      if (shadowsDirty) {
+        renderer.shadowMap.needsUpdate = true
+        contact.update(renderer, scene)
+      }
+      // Frame the spread: wide screens see it all; tall ones a narrower column.
+      const aspect = width / height
+      camera.aspect = aspect
+      const portrait = aspect < 0.8
+      const span = portrait ? 50 : 66 // cm across the short side
+      camera.fov = 28
+      const dist = span / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / Math.min(1, aspect)
+      const drift = reduced ? 0 : Math.sin(time * 0.15) * 0.4
+      camera.position.set(portrait ? -22 : -8 + drift, Math.min(dist, 420), portrait ? 6 : -2)
+      camera.lookAt(camera.position.x, 0, camera.position.z)
+      camera.updateProjectionMatrix()
+    },
+    dispose() {
+      for (const d of disposers) d()
+      contact.dispose()
+      scene.environment?.dispose()
+    },
+  }
+  return self
+}
+
+/** The bottle's real height in centimetres (cap included). */
+const BOTTLE_CM = 21.6
+
+function cheapGlass(m: THREE.MeshPhysicalMaterial) {
+  m.transmission = 0
+  m.transparent = true
+  m.opacity = 0.32
+  m.depthWrite = false
+  // Clear and glossy: the glass reads by its highlights.
+  m.roughnessMap = null
+  m.roughness = 0.06
+  m.clearcoat = 1
+  m.clearcoatRoughness = 0.04
+  m.envMapIntensity = 1.6
+  m.needsUpdate = true
+}

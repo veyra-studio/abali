@@ -1,10 +1,17 @@
 /**
  * Scroll choreography for the whole film. Each chapter is a Veyra scene;
- * its progress drives DOM typography and, when WebGL is available, the
- * product state and world uniforms.
+ * its progress drives the DOM typography and, with WebGL, the worlds:
+ *
+ *   hero    the bottle stands in the studio, cold, capped
+ *   تق      the camera closes in on the cap; the opener bites; the cap flies
+ *   پیس     the gas escapes as a cold wisp; shake it and it boils over
+ *   آخیش    the foam turns to snow: Abali's mountains, the word stretches
+ *   سفره    the sofreh fills, dish by dish; one thing is missing
+ *   finale  your turn: open it
  */
-import { clamp, damp, inlineSign, range, scenePresets, splitText, Spring, toPersianDigits, type Stage } from '@veyra/core'
-import type { Experience } from './gl/experience'
+import { clamp, inlineSign, kashida, lerp, range, scenePresets, splitText, Spring, toPersianDigits, type Stage } from '@veyra/core'
+import { BOTTLE } from './gl/bottle'
+import type { Experience, World } from './gl/experience'
 import type { AbaliSound } from './sound'
 
 const $ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel)!
@@ -12,19 +19,29 @@ const $$ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = doc
 const ease = (t: number) => t * t * (3 - 2 * t)
 const easeOut = (t: number) => 1 - (1 - t) ** 3
 
+interface Place {
+  x: number
+  baseY: number
+  scale: number
+}
+const mix = (a: Place, b: Place, t: number): Place => ({ x: lerp(a.x, b.x, t), baseY: lerp(a.baseY, b.baseY, t), scale: lerp(a.scale, b.scale, t) })
+
+type Theme = 'studio' | 'snow' | 'table'
+const THEME_COLOR: Record<Theme, string> = { studio: '#05070b', snow: '#e9f0f6', table: '#efe7d6' }
+
 export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliSound): void {
   const html = document.documentElement
   const reduced = () => stage.reducedMotion.value
-  const u = exp?.world.uniforms
-  const st = exp?.state
+  const vw = () => stage.viewport.w
+  const vh = () => stage.viewport.h
+  const mobile = () => vw() < 760
 
-  let theme = 'dark'
-  const setTheme = (t: string) => {
+  let theme: Theme = 'studio'
+  const setTheme = (t: Theme) => {
     if (t === theme) return
     theme = t
     html.dataset.theme = t
-    const meta = document.querySelector('meta[name="theme-color"]')
-    meta?.setAttribute('content', t === 'light' ? '#f4f2ec' : t === 'blue' ? '#2a8bd3' : t === 'night' ? '#0b1640' : '#07090c')
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[t])
   }
 
   // ------------------------------------------------------------------
@@ -45,230 +62,188 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
   }
 
   // ------------------------------------------------------------------
+  // Placements: CSS px for the pixel camera
+  // ------------------------------------------------------------------
+  const heroSlot = $('.hero-slot')
+  const finaleSlot = $('.finale-slot')
+  for (const el of [heroSlot, finaleSlot]) stage.rects.track(el)
+  const fromSlot = (el: Element, live: boolean): Place => {
+    // The hero slot is read as if the page were at the top: the bottle stays
+    // where it first stood while the hero scrolls away beneath it.
+    const r = live ? stage.rects.view(el) : stage.rects.get(el)
+    return { x: r.left + r.width / 2 - vw() / 2, baseY: -(r.top + r.height - vh() / 2), scale: r.height }
+  }
+  /** Close on the cap: the crown fills a good part of the screen, beside the copy. */
+  const capClose = (): Place => {
+    const S = vh() * (mobile() ? 1.3 : 2.35)
+    const capY = vh() * (mobile() ? -0.06 : 0.07)
+    return { x: mobile() ? 0 : vw() * 0.17 * inlineSign(html), baseY: capY - 0.983 * S, scale: S }
+  }
+  /** The open neck, a little further back, room for the wisp above it. */
+  const neckClose = (): Place => {
+    const S = vh() * (mobile() ? 1.2 : 1.85)
+    const mouthY = vh() * (mobile() ? -0.02 : -0.1)
+    return { x: mobile() ? 0 : vw() * 0.17 * inlineSign(html), baseY: mouthY - BOTTLE.rim * S, scale: S }
+  }
+
+  // ------------------------------------------------------------------
   // 00 — Hero
   // ------------------------------------------------------------------
   const heroTitle = $('.hero-title')
-  const heroKicker = $('.hero .kicker')
-  const heroSub = $('.hero-sub')
-  const heroCue = $('.scroll-cue')
+  const beats = $$('.hero-title .beat')
+  const heroFade = $$('.hero .kicker, .hero-sub, .hero-actions')
   let heroOut = 0
   stage.scene('#top', {
     start: 'top top',
     end: 'bottom top',
     onProgress(p) {
       heroOut = p
-      if (reduced()) return
-      heroTitle.style.transform = `translate3d(0, ${-p * 18}vh, 0)`
-      heroTitle.style.opacity = String(1 - range(p, 0.1, 0.55))
-      heroSub.style.opacity = heroCue.style.opacity = String(1 - range(p, 0, 0.3))
+      if (reduced()) {
+        heroTitle.style.opacity = String(1 - range(p, 0.2, 0.6))
+        return
+      }
+      heroTitle.style.transform = `translate3d(0, ${-p * 14}vh, 0)`
+      heroTitle.style.opacity = String(1 - range(p, 0.15, 0.6))
+      for (const el of heroFade) el.style.opacity = String(1 - range(p, 0, 0.35))
     },
   })
-
-  // Entrance after the loader.
+  let heroLift = reduced() ? 0 : 1
   if (!reduced()) {
     const tl = stage.timeline()
-    tl.fromTo(heroKicker, { opacity: 0, y: 16 }, { opacity: 1, y: 0 }, { duration: 1.1 }, 0.1)
-      .fromTo(heroTitle, { clipPath: 'inset(-30% -5% 100% -5%)', y: 40 }, { clipPath: 'inset(-30% -5% -30% -5%)', y: 0 }, { duration: 1.6, ease: 'glide' }, 0.15)
-      .fromTo([heroSub, heroCue], { opacity: 0 }, { opacity: 1 }, { duration: 1.2 }, 0.9)
-    if (st) tl.fromTo(st, { lift: -0.55 }, { lift: 0 }, { duration: 1.8, ease: 'glide' }, 0)
+    beats.forEach((b, i) => {
+      tl.fromTo(b, { opacity: 0, y: '0.35em', scale: 1.08 }, { opacity: 1, y: '0em', scale: 1 }, { duration: 0.9, ease: 'backOut' }, 0.15 + i * 0.32)
+    })
+    tl.fromTo(heroFade, { opacity: 0 }, { opacity: 1 }, { duration: 1.2 }, 1.1)
+    const lift = { v: 1 }
+    tl.fromTo(lift, { v: 1 }, { v: 0 }, { duration: 1.8, ease: 'glide', onUpdate: () => (heroLift = lift.v) }, 0)
     tl.play()
   }
 
   // ------------------------------------------------------------------
-  // 01 — Label: push into the label, hand off to the 2D world, morph
+  // 01 — تق
   // ------------------------------------------------------------------
-  const labelTitle = $('.label-title')
-  const labelLines = $$('.label-line')
-  let labelP = 0
-  stage.scene('#label', {
+  const taqSection = $('#taq')
+  const taqWord = $('.taq-word')
+  const taqLine = $('.taq-line')
+  const taqNo = $('#taq .chapter-no')
+  let taqP = 0
+  let popped = false
+  const taqSpring = new Spring(0, { stiffness: 320, damping: 14 })
+  const POP = 0.58
+  stage.scene(taqSection, {
     ...scenePresets.pinned,
     onProgress(p) {
-      labelP = p
-      labelTitle.style.setProperty('--title-o', String(range(p, 0.02, 0.12) * (1 - range(p, 0.34, 0.44))))
-      const beats = [0.5, 0.62, 0.76]
-      labelLines.forEach((line, i) => {
-        const t = reduced() ? (p > beats[i]! ? 1 : 0) : easeOut(range(p, beats[i]!, beats[i]! + 0.1))
-        line.style.opacity = String(t)
-        line.style.transform = reduced() ? 'none' : `translate3d(0, ${(1 - t) * 0.6}em, 0)`
-      })
+      taqP = p
+      const lineO = range(p, 0.1, 0.2)
+      taqLine.style.opacity = taqNo.style.opacity = String(lineO)
+      // The pop fires once each time the scroll crosses it going forward.
+      if (p >= POP && !popped) {
+        popped = true
+        sound.taq()
+        sound.hiss(0.8)
+        taqSpring.impulse(reduced() ? 0 : 9)
+      } else if (p < POP - 0.02 && popped) {
+        popped = false
+      }
     },
   })
 
   // ------------------------------------------------------------------
-  // 02 — Place
+  // 02 — پیس
   // ------------------------------------------------------------------
-  const placeTitle = $('.place-title')
-  const placeCopy = $('.place-copy')
-  let placeP = 0
-  stage.scene('#place', {
-    ...scenePresets.pinned,
-    onProgress(p) {
-      placeP = p
-      if (!reduced()) placeTitle.style.setProperty('--place-shift', `${(0.5 - p) * 16}vh`)
-      placeCopy.style.setProperty('--copy-o', String(range(p, 0.22, 0.34) * (1 - range(p, 0.9, 1))))
-    },
-  })
-
-  // ------------------------------------------------------------------
-  // 03 — Fizz: pressure builds when you shake
-  // ------------------------------------------------------------------
-  const fizzWord = $('.fizz-word')
-  const fizzCopy = $('.fizz-copy')
+  const pisSection = $('#pis')
+  const pisWord = $('.pis-word')
+  const pisSplit = splitText(pisWord, { type: 'chars' })
+  const pisLine = $('.pis-line')
   const shake = $('.shake')
   const hint = $('.shake-hint')
   const gauge = $('.gauge')
   const shakeBtn = $<HTMLButtonElement>('.shake-btn')
-  const fizzSection = $('#fizz')
-  const fizzWordSpring = new Spring(0, { stiffness: 260, damping: 16 })
-  let fizzP = 0
-  let fizzActive = false
+  let pisP = 0
+  let pisActive = false
   let pressure = 0
-  let burst = -1 // seconds since burst, or -1
+  let burst = -1 // seconds since the bottle boiled over, or -1
   let hintLevel = -1
-  const hints = ['تکانش ندهید.', 'گفتیم تکانش ندهید…', 'جدی می‌گوییم!', 'گفته بودیم!']
+  const hints = ['تکانش ندهید.', 'گفتیم تکانش ندهید!', 'دارد سر می‌رود!', 'دیدید؟ سر رفت.']
   const setHint = (level: number) => {
     if (level === hintLevel) return
     hintLevel = level
     hint.textContent = hints[level]!
   }
-  stage.scene('#fizz', {
+  stage.scene(pisSection, {
     ...scenePresets.pinned,
-    onEnter: () => (fizzActive = true),
-    onEnterBack: () => (fizzActive = true),
-    onLeave: () => (fizzActive = false),
-    onLeaveBack: () => (fizzActive = false),
+    onEnter: () => (pisActive = true),
+    onEnterBack: () => (pisActive = true),
+    onLeave: () => (pisActive = false),
+    onLeaveBack: () => (pisActive = false),
     onProgress(p) {
-      fizzP = p
-      fizzSection.style.setProperty('--shake-o', String(range(p, 0.32, 0.4) * (1 - range(p, 0.93, 1))))
-      fizzCopy.style.opacity = String(range(p, 0.24, 0.32))
+      pisP = p
+      pisSection.style.setProperty('--shake-o', String(range(p, 0.22, 0.3) * (1 - range(p, 0.84, 0.9))))
+      // The copy goes under the foam as the bottle boils over.
+      pisSection.style.setProperty('--copy-o', String(1 - range(p, 0.9, 0.97)))
+      pisLine.style.opacity = String(range(p, 0.12, 0.2))
     },
   })
   shakeBtn.addEventListener('click', () => {
     if (burst < 0) pressure = Math.min(1, pressure + 0.22)
   })
-  // Touch: dragging on the chapter shakes too (pointer velocity covers it).
 
   // ------------------------------------------------------------------
-  // 04 — White: per-letter Lalezar with joins intact, drifting in reading order
+  // 03 — آخیش
   // ------------------------------------------------------------------
-  const whiteLines = $$('.white-line')
-  const whiteSplits = whiteLines.map((line) => splitText(line, { type: 'chars' }))
-  const sign = inlineSign(whiteLines[0]!)
-  whiteLines.forEach((line, i) => {
-    const split = whiteSplits[i]!
-    const from = line.dataset.from === 'left' ? -1 : 1
-    let revealed = false
-    const reveal = () => {
-      if (revealed || reduced()) return
-      revealed = true
-      stage
-        .timeline()
-        .fromTo(split.chars, { y: '0.5em', opacity: 0, rotate: -6 }, { y: '0em', opacity: 1, rotate: 0 }, { duration: 1, stagger: 0.045, ease: 'backOut' })
-        .play()
-    }
-    if (!reduced()) split.chars.forEach((c) => (c.style.opacity = '0'))
-    stage.scene(line, {
-      start: 'top bottom',
-      end: 'bottom top',
-      onEnter: reveal,
-      onEnterBack: reveal,
-      onProgress(p) {
-        if (reduced()) return
-        line.style.setProperty('--shift', `${(0.5 - p) * 22 * from * sign * -1}vw`)
-      },
-    })
-  })
-  let whiteIn = 0
-  stage.scene('#white', {
-    start: 'top bottom',
-    end: 'top top',
-    onProgress(p) {
-      whiteIn = p
-    },
-  })
-
-  // ------------------------------------------------------------------
-  // 05 — Table: the sofreh fills, dish by dish
-  // ------------------------------------------------------------------
-  const svg = $<SVGSVGElement>('.sofreh-svg')
-  // Cloth border dots and rice grains are generated, not hand-placed.
-  const dots = svg.querySelector('.cloth-dots')!
-  for (let i = 0; i < 4 * 28; i++) {
-    const side = Math.floor(i / 28)
-    const t = ((i % 28) + 0.5) / 28
-    const pos = 82 + t * 836
-    const [cx, cy] = side === 0 ? [pos, 40] : side === 1 ? [960, pos] : side === 2 ? [1000 - pos, 960] : [40, 1000 - pos]
-    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
-    c.setAttribute('cx', String(cx))
-    c.setAttribute('cy', String(cy))
-    c.setAttribute('r', i % 2 ? '3' : '5')
-    dots.append(c)
-  }
-  const rice = svg.querySelector('.rice')!
-  for (let i = 0; i < 160; i++) {
-    const a = Math.random() * Math.PI * 2
-    const r = Math.sqrt(Math.random()) * 112
-    const e = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse')
-    e.setAttribute('cx', String(-30 + Math.cos(a) * r))
-    e.setAttribute('cy', String(10 + Math.sin(a) * r))
-    e.setAttribute('rx', '7')
-    e.setAttribute('ry', '2.4')
-    e.setAttribute('transform', `rotate(${Math.random() * 180} ${-30 + Math.cos(a) * r} ${10 + Math.sin(a) * r})`)
-    rice.append(e)
-  }
-  const capTeeth = svg.querySelector('.bottle-cap')!
-  for (let i = 0; i < 21; i++) {
-    const a = (i / 21) * Math.PI * 2
-    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
-    c.setAttribute('cx', String(Math.cos(a) * 31))
-    c.setAttribute('cy', String(Math.sin(a) * 31))
-    c.setAttribute('r', '4.2')
-    c.setAttribute('fill', '#24357a')
-    capTeeth.append(c)
-  }
-  // Wrap each dish so CSS transforms don't clobber its SVG placement.
-  const dishes = $$<SVGGElement>('.dish', svg).map((g) => {
-    const inner = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    inner.classList.add('dish-inner')
-    while (g.firstChild) inner.append(g.firstChild)
-    g.append(inner)
-    g.style.opacity = '1'
-    inner.style.transformBox = 'fill-box'
-    inner.style.transformOrigin = 'center'
-    return { g, inner, order: Number(g.dataset.order) }
-  })
-  // Landing order follows the menu: rice, kebab, tomato, onion, sumac, bread & herbs, glass, bottle.
-  const sequence = [2, 3, 4, 5, 6, 7, 0, 1, 8, 9]
-  const menu = $$('.menu li')
-  const menuFor: Record<number, number> = { 2: 0, 3: 1, 4: 1, 5: 2, 6: 3, 7: 4, 0: 5, 1: 5 }
-  const tableSection = $('#table')
-  stage.scene('#table', {
+  const akhishSection = $('#akhish')
+  const akhishWord = $('.akhish-word')
+  const akhishLines = $$('.akhish-line')
+  const stretch = kashida(akhishWord)
+  let akhishP = 0
+  stage.scene(akhishSection, {
     ...scenePresets.pinned,
     onProgress(p) {
-      const lit = new Set<number>()
-      for (const d of dishes) {
-        const idx = sequence.indexOf(d.order)
-        const startAt = 0.04 + idx * 0.075
-        const t = reduced() ? (p >= startAt ? 1 : 0) : range(p, startAt, startAt + 0.1)
-        const e = easeOut(t)
-        d.inner.style.opacity = String(clamp(t * 1.6))
-        d.inner.style.transform = reduced() ? 'none' : `translate(${(1 - e) * 26 * sign}px, ${(1 - e) * -70}px) scale(${1 + (1 - e) * 0.18}) rotate(${(1 - e) * -10}deg)`
-        if (t > 0.5 && menuFor[d.order] !== undefined) lit.add(menuFor[d.order]!)
-      }
-      menu.forEach((li, i) => li.classList.toggle('is-on', lit.has(i)))
-      tableSection.style.setProperty('--punch-o', String(range(p, 0.78, 0.86)))
+      akhishP = p
+      akhishWord.style.opacity = String(range(p, 0.06, 0.16))
+      stretch.level = reduced() ? 0 : Math.round((mobile() ? 5 : 9) * ease(range(p, 0.14, 0.62)))
+      akhishLines.forEach((line, i) => {
+        const t = range(p, 0.3 + i * 0.08, 0.4 + i * 0.08)
+        line.style.opacity = String(t)
+        line.style.transform = reduced() ? 'none' : `translate3d(0, ${(1 - easeOut(t)) * 0.5}em, 0)`
+      })
     },
   })
 
   // ------------------------------------------------------------------
-  // 06 — Finale: open gently
+  // 04 — سفره
+  // ------------------------------------------------------------------
+  const sofrehSection = $('#sofreh')
+  const menu = $$('.menu li')
+  const punchMissing = $('.punch-missing')
+  const punchDone = $('.punch-done')
+  let sofrehP = 0
+  let landedCount = 0
+  stage.scene(sofrehSection, {
+    ...scenePresets.pinned,
+    onProgress(p) {
+      sofrehP = p
+      const table = exp?.table
+      // Without the 3D table, the menu lights up on its own schedule.
+      const lit = table ? table.litMenu(p) : Math.floor(range(p, 0.1, 0.7) * 6.99)
+      menu.forEach((li, i) => li.classList.toggle('is-on', i < lit))
+      const landed = table ? table.landed(p) : 0
+      if (landed > landedCount) sound.thud(landed === table?.count ? 1.3 : 0.8)
+      landedCount = landed
+      punchMissing.classList.toggle('is-on', p >= 0.7 && p < 0.86)
+      punchDone.classList.toggle('is-on', p >= 0.9)
+    },
+  })
+
+  // ------------------------------------------------------------------
+  // 05 — Finale: your turn
   // ------------------------------------------------------------------
   const openBtn = $<HTMLButtonElement>('.open-btn')
-  const openOval = $('.open-oval')
+  const openLabel = $('.open-label')
   const cheers = $('.cheers')
-  const finaleSlot = $('.finale-slot')
   let finaleIn = 0
   let opened = false
+  let wisp = -1 // seconds since the finale pop, or -1
   stage.scene('#finale', {
     start: 'top bottom',
     end: 'top top',
@@ -276,60 +251,62 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
       finaleIn = p
     },
   })
-  const burstBubbles = () => {
-    if (reduced()) return
-    const rect = finaleSlot.getBoundingClientRect()
-    const layer = document.createElement('div')
-    layer.setAttribute('aria-hidden', 'true')
-    layer.style.cssText = `position:fixed;left:${rect.left + rect.width / 2}px;top:${rect.top + rect.height * 0.04}px;z-index:4;pointer-events:none`
-    document.body.append(layer)
-    const tl = stage.timeline({ onComplete: () => layer.remove() })
-    for (let i = 0; i < 26; i++) {
-      const b = document.createElement('span')
-      const size = 4 + Math.random() * 14
-      b.style.cssText = `position:absolute;left:0;top:0;width:${size}px;height:${size}px;margin:${-size / 2}px;border-radius:50%;border:1.5px solid #f4f2ec;background:rgb(244 242 236 / ${Math.random() * 0.3})`
-      layer.append(b)
-      const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.6
-      const d = 80 + Math.random() * 260
-      tl.fromTo(b, { x: 0, y: 0, opacity: 1, scale: 0.4 }, { x: Math.cos(a) * d, y: Math.sin(a) * d - 60, opacity: 0, scale: 1 }, { duration: 0.9 + Math.random() * 0.8, ease: 'expoOut' }, Math.random() * 0.15)
-    }
-    tl.play()
-  }
+  let cheerTimer: number | undefined
   openBtn.addEventListener('click', () => {
+    window.clearTimeout(cheerTimer)
     if (!opened) {
       opened = true
-      exp?.popCap()
-      sound.pop()
-      burstBubbles()
-      cheers.textContent = 'نوش جان!'
-      openOval.textContent = 'یکی دیگر؟'
+      exp?.studio.popCap()
+      sound.taq()
+      sound.hiss(1)
+      wisp = 0
+      cheers.textContent = 'پیسسس'
+      cheerTimer = window.setTimeout(() => (cheers.textContent = 'آخیش!'), 1100)
+      openLabel.textContent = 'یکی دیگر؟'
     } else {
       opened = false
-      exp?.resetCap()
-      setTimeout(() => sound.clack(), 420)
+      exp?.studio.resetCap()
+      wisp = -1
+      window.setTimeout(() => sound.clack(), 420)
       cheers.textContent = ''
-      openOval.textContent = 'آرام باز کنید'
+      openLabel.textContent = 'تق!'
     }
   })
 
   // ------------------------------------------------------------------
-  // Per-frame orchestration of GL state, theme and sound
+  // Per-frame orchestration: worlds, studio state, veil, theme, sound
   // ------------------------------------------------------------------
-  const fizzLevelSpring = new Spring(0, { stiffness: 40, damping: 12 })
+  const wordSpring = new Spring(0, { stiffness: 180, damping: 18 })
+  const fizzSpring = new Spring(0, { stiffness: 40, damping: 12 })
+  const foamSpring = new Spring(0, { stiffness: 30, damping: 9 })
+  let hiss = 0
   stage.onFrame((frame) => {
     const dt = frame.delta
+    const time = frame.time
+    const r = reduced()
 
-    // Theme follows the dominant visual.
-    const inLabel = labelP > 0 && labelP < 1
-    if (finaleIn > 0.5) setTheme('dark')
-    else if (whiteIn > 0.6) setTheme('light')
-    else if (fizzP > 0.12) setTheme('night')
-    else if (placeP > 0 || (inLabel && labelP > 0.44) || labelP >= 1) setTheme('blue')
-    else setTheme('dark')
+    // «تق!» slams in at the pop.
+    const taqT = taqP >= POP ? 1 : 0
+    const slam = taqSpring.step(dt)
+    taqWord.style.opacity = String(taqT)
+    taqWord.style.transform = r ? 'none' : `scale(${1 + slam * 0.02}) rotate(${slam * -0.25}deg)`
 
-    // Fizz pressure: pointer speed while the chapter is active.
-    if (fizzActive && fizzP > 0.3 && fizzP < 0.95 && burst < 0) {
-      // Limit the gain per frame so one pointer jump can't fill the gauge.
+    // «پیسسس…» spreads like escaping gas.
+    wordSpring.target = range(pisP, 0.04, 0.16)
+    const w = wordSpring.step(dt)
+    pisWord.style.opacity = String(clamp(w * 1.4))
+    if (!r) {
+      const n = pisSplit.chars.length
+      hiss = lerp(hiss, 0.3 + pressure * 1.2, 1 - Math.exp(-dt * 4))
+      pisSplit.chars.forEach((c, i) => {
+        const k = (i - (n - 1) / 2) / n
+        const drift = Math.sin(time * 1.7 + i * 1.3) * 0.02 * hiss
+        c.style.transform = `translate3d(${(k * hiss * 0.18 + drift) * inlineSign(pisWord)}em, ${Math.sin(time * 2.1 + i) * 0.03 * hiss}em, 0)`
+      })
+    }
+
+    // Shake: pointer speed builds pressure while the chapter is on screen.
+    if (pisActive && pisP > 0.24 && pisP < 0.84 && burst < 0) {
       const speed = stage.pointer?.speed ?? 0
       pressure += Math.min(0.05, Math.max(0, speed - 250) * 0.00022 * dt * 60)
     }
@@ -337,12 +314,13 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     if (pressure >= 1 && burst < 0) {
       burst = 0
       setHint(3)
-      sound.pop()
+      sound.hiss(1)
+      sound.taq()
     }
     if (burst >= 0) {
       burst += dt
       pressure = Math.max(0, pressure - dt * 0.9)
-      if (burst > 2.6) {
+      if (burst > 3.2) {
         burst = -1
         setHint(0)
       }
@@ -352,87 +330,107 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     gauge.style.setProperty('--pressure', pressure.toFixed(3))
     gauge.setAttribute('aria-valuenow', String(Math.round(pressure * 100)))
     gauge.setAttribute('aria-valuetext', `${toPersianDigits(Math.round(pressure * 100))} درصد`)
-    fizzWordSpring.target = range(fizzP, 0.12, 0.26)
-    const fw = fizzWordSpring.step(dt)
-    const jitter = reduced() ? 0 : pressure * 6
-    fizzWord.style.transform = `translate3d(${(Math.random() - 0.5) * jitter}px, ${(Math.random() - 0.5) * jitter}px, 0) scale(${0.55 + fw * 0.45}) rotate(${(1 - fw) * -8}deg)`
-    fizzWord.style.opacity = String(clamp(fw * 1.4))
 
     // Sound beds.
-    fizzLevelSpring.target = fizzP > 0.05 && fizzP < 0.98 ? 0.15 + pressure * 0.85 : 0
-    sound.fizz(Math.max(0, fizzLevelSpring.step(dt)))
-    sound.wind(placeP > 0 && placeP < 1 ? 0.6 * (1 - Math.abs(placeP - 0.5) * 1.4) : 0)
+    fizzSpring.target = pisP > 0.02 && pisP < 0.98 ? 0.18 + pressure * 0.82 : taqP > POP && taqP < 1 ? 0.25 : 0
+    sound.fizz(Math.max(0, fizzSpring.step(dt)))
+    sound.wind(akhishP > 0 && akhishP < 1 ? 0.65 * (1 - Math.abs(akhishP - 0.5) * 1.3) : 0)
 
-    if (!exp || !u || !st) return
-
-    // ---- Which chapter drives the GL scene ----
-    const label = labelP
-    const handoff = range(label, 0.36, 0.44)
-    const afterHandoff = label >= 0.44 || placeP > 0 || fizzP > 0
-    const whiteFlood = whiteIn
-
-    // Product
-    let visible = true
-    st.push = 0
-    st.zoom = 1
-    st.idle = 1
-    st.tilt = 1
-    st.shake = 0
-    let lift = st.lift
+    // ---- Which world is on screen ----
+    let world: World = 'studio'
+    let themeNow: Theme = 'studio'
+    let foamFront = -1 // veil foam front, screen space
+    let mist = 0
+    let dark = 0
+    const burstFlood = burst >= 0 ? (burst < 0.7 ? easeOut(burst / 0.7) : 1 - ease(range(burst, 1.6, 3.0))) : 0
+    const scrollFlood = ease(range(pisP, 0.86, 1))
     if (finaleIn > 0) {
-      st.slot = 'finale'
-      lift = reduced() ? 0 : -(1 - easeOut(finaleIn)) * 0.4
-      visible = true
-    } else if (fizzP > 0) {
-      // The bottle drops into the night of bubbles, then leaves upward.
-      st.slot = 'hero'
-      const inT = easeOut(range(fizzP, 0.08, 0.3))
-      const outT = ease(range(fizzP, 0.88, 1))
-      // Portrait screens: a smaller bottle, higher, so the controls fit below.
-      const portrait = stage.viewport.aspect < 0.8
-      lift = (1 - inT) * 1.25 + outT * 1.3 + (portrait ? 0.3 : 0.02)
-      st.zoom = portrait ? 0.6 : 0.86
-      st.shake = pressure
-      st.idle = 0.6
-      visible = inT > 0 && outT < 1
-    } else if (label > 0 && !afterHandoff) {
-      st.slot = 'hero'
-      st.push = range(label, 0, 0.42)
-      lift = 0
-      visible = true
-    } else if (afterHandoff) {
-      // Hidden, but the label parameters stay frozen at the hand-off pose
-      // so the oval becomes the sun from exactly where it was.
-      st.slot = 'hero'
-      st.push = 1
-      lift = 0
-      visible = false
+      dark = finaleIn < 0.5 ? ease(range(finaleIn, 0.04, 0.5)) : 1 - ease(range(finaleIn, 0.5, 0.95))
+      world = finaleIn < 0.5 ? 'table' : 'studio'
+      themeNow = finaleIn < 0.5 ? 'table' : 'studio'
+    } else if (sofrehP > 0) {
+      world = 'table'
+      themeNow = 'table'
+      mist = 1 - ease(range(sofrehP, 0.01, 0.12))
+    } else if (akhishP > 0) {
+      world = 'landscape'
+      themeNow = 'snow'
+      mist = Math.max(1 - ease(range(akhishP, 0.02, 0.3)), ease(range(akhishP, 0.86, 1)))
     } else {
-      st.slot = 'hero'
-      lift = heroOut > 0 ? 0 : st.lift
+      world = 'studio'
+      const flood = Math.max(burstFlood, scrollFlood)
+      if (flood > 0) foamFront = lerp(-0.15, 1.18, flood)
+      themeNow = flood > 0.55 ? 'snow' : 'studio'
     }
-    st.lift = lift
-    st.visible = visible
+    setTheme(themeNow)
+    if (!exp) return
 
-    // World
-    const showWorld = afterHandoff && whiteFlood < 1
-    exp.world.mesh.visible = showWorld
-    u.uLabel.value = label >= 0.36 || placeP > 0 || fizzP > 0 ? 1 : 0
-    u.uMorph.value = placeP > 0 || fizzP > 0 ? 1 : range(label, 0.46, 0.96)
-    u.uTravel.value = fizzP > 0 ? 1 : placeP
-    u.uSnow.value = range(placeP, 0.04, 0.25) * (1 - range(fizzP, 0, 0.12))
-    u.uNightMix.value = ease(range(fizzP, 0.02, 0.2))
-    u.uBubbles.value = range(fizzP, 0.08, 0.3)
-    u.uPressure.value = damp(u.uPressure.value, pressure, 8, dt)
-    // Foam levels are in screen space: the milk front leads the white
-    // chapter's top edge so its text always sits on milk.
-    u.uBurst.value = burst >= 0 ? (burst < 0.5 ? easeOut(burst / 0.5) : 1 - ease(range(burst, 1.2, 2.6))) * 1.3 - 0.15 : -1
-    u.uMilkMix.value = whiteFlood > 0 ? whiteFlood * 1.2 + 0.04 : -1
-    // Cross-fade to the flat label while the bottle is still in front.
-    exp.world.overlayAlpha.value = label > 0.36 && label < 0.44 ? handoff : 0
+    const veil = exp.veil.uniforms
+    veil.uFoam.value = foamFront
+    veil.uMist.value = mist
+    veil.uDark.value = dark
+    exp.world = world
+    if (exp.landscape) exp.landscape.progress = akhishP
+    if (exp.table) exp.table.progress = finaleIn > 0 ? 1 : sofrehP
 
-    // The canvas sleeps once the milk has covered everything (white, table)
-    // and wakes for the finale.
-    exp.active = finaleIn > 0 || whiteFlood < 1
+    // ---- Studio state ----
+    const st = exp.studio.state
+    st.visible = true
+    st.turn = 0
+    st.tiltX = 0
+    st.shake = 0
+    st.foam = 0
+    st.plume = 0
+    st.plumeRise = 0
+    st.opener = 0
+    st.capScrub = 0
+    if (world !== 'studio') return
+
+    if (finaleIn > 0) {
+      const place = fromSlot(finaleSlot, true)
+      Object.assign(st, place, { floor: 1, ice: 1, idle: 1, pointer: 1 })
+      st.baseY += r ? 0 : -(1 - easeOut(finaleIn)) * vh() * 0.25
+      if (wisp >= 0) {
+        wisp += dt
+        st.plume = 0.8 * (1 - range(wisp, 1.2, 3.2))
+        st.plumeRise = range(wisp, 0, 1.4)
+      }
+      return
+    }
+
+    const hero = fromSlot(heroSlot, false)
+    hero.baseY -= heroLift * vh() * 0.45
+    if (pisP > 0) {
+      // The open neck: wisp, foam, the shake.
+      const t = ease(range(pisP, 0, 0.2))
+      Object.assign(st, mix(capClose(), neckClose(), t))
+      st.capScrub = 1
+      st.floor = 0
+      st.ice = 0
+      st.idle = 0
+      st.pointer = 0.4
+      st.tiltX = 0.16 * t
+      st.shake = pressure
+      st.plume = r ? 0.5 : 0.78
+      st.plumeRise = 1
+      foamSpring.target = burst >= 0 ? 1 : Math.max(pressure * 0.55, scrollFlood)
+      st.foam = clamp(foamSpring.step(dt))
+    } else if (taqP > 0) {
+      const zoom = ease(range(taqP, 0, 0.32))
+      Object.assign(st, mix(hero, capClose(), zoom))
+      st.floor = 1 - range(taqP, 0, 0.14)
+      st.ice = st.floor
+      st.idle = 1 - zoom
+      st.pointer = 1 - zoom * 0.7
+      const p = taqP
+      st.opener = p < 0.5 ? 0.5 * ease(range(p, 0.16, 0.5)) : p < POP ? 0.5 + 0.3 * range(p, 0.5, POP) : 0.8 + 0.2 * range(p, POP + 0.02, 0.8)
+      st.capScrub = p < 0.5 ? 0 : p < POP ? 0.25 * range(p, 0.5, POP) : r ? 1 : 0.25 + 0.75 * range(p, POP, 0.86)
+      st.plume = range(p, POP, POP + 0.08) * (r ? 0.5 : 0.7)
+      st.plumeRise = range(p, POP, 0.97)
+      foamSpring.target = 0
+      foamSpring.step(dt)
+    } else {
+      Object.assign(st, hero, { floor: 1, ice: 1, idle: 1, pointer: heroOut > 0 ? 1 - heroOut : 1 })
+    }
   }, 40)
 }

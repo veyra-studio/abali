@@ -25,19 +25,28 @@ grain.setAttribute('aria-hidden', 'true')
 document.body.append(grain)
 
 // ---------------------------------------------------------------------
-// Sound toggle
+// Sound: the HUD toggle and the hero's invitation drive the same bus.
 // ---------------------------------------------------------------------
 const toggle = document.querySelector<HTMLButtonElement>('.sound-toggle')!
-const label = toggle.querySelector('.sound-label')!
+const toggleLabel = toggle.querySelector('.sound-label')!
+const cta = document.querySelector<HTMLButtonElement>('.sound-cta')!
+const ctaLabel = cta.querySelector('.sound-cta-label')!
 stage.sound?.enabled.subscribe(
   (on) => {
-    toggle.setAttribute('aria-pressed', String(on))
+    for (const b of [toggle, cta]) b.setAttribute('aria-pressed', String(on))
     toggle.setAttribute('aria-label', on ? 'صدا روشن است؛ برای خاموش کردن بزنید' : 'صدا خاموش است؛ برای روشن کردن بزنید')
-    label.textContent = on ? 'صدا روشن' : 'صدا'
+    toggleLabel.textContent = on ? 'صدا روشن' : 'صدا'
+    ctaLabel.textContent = on ? 'صدا روشن است' : 'صدا را روشن کنید'
   },
   { immediate: true },
 )
-toggle.addEventListener('click', () => void stage.sound?.toggle())
+for (const b of [toggle, cta]) {
+  b.addEventListener('click', async () => {
+    const wasOn = stage.sound?.enabled.value
+    await stage.sound?.toggle()
+    if (!wasOn) sound.taq()
+  })
+}
 
 // ---------------------------------------------------------------------
 // Loading
@@ -47,9 +56,9 @@ const preload = new Preloader()
 preload.progress.subscribe((p) => loader.progress(p), { immediate: true })
 
 const fonts = Promise.all([
-  preload.font('700 1em "Noto Nastaliq Urdu Variable"', 'یک بطری کوه دوغ آبعلی', 1),
-  preload.font('400 1em "Lalezar"', 'پیسسس سفید برف', 0.5),
-  preload.font('400 1em "Estedad Variable"', 'آبعلی نام جایی در البرز است', 0.5),
+  preload.font('700 1em "Noto Nastaliq Urdu Variable"', 'دوغ آبعلی', 1),
+  preload.font('400 1em "Lalezar"', 'تق، پیس، آخیش! سفره چیده شد.', 1),
+  preload.font('400 1em "Estedad Variable"', 'سه صدا تا خنکی. همه‌چیز با یک دربازکن شروع می‌شود.', 0.5),
 ])
 
 let experience: Experience | null = null
@@ -62,7 +71,6 @@ if (supportsWebGL2()) {
         const exp = createExperience(stage)
         // Compile shaders now rather than on the first scrolled frame.
         await exp.layer.renderer.compileAsync(exp.layer.scene, exp.layer.camera)
-        exp.layer.render()
         experience = exp
       })(),
       4,
@@ -78,11 +86,20 @@ if (supportsWebGL2()) {
 stage.scroll?.lock()
 window.scrollTo(0, 0)
 await preload.done({ minDuration: reduced ? 0 : 1.4 })
-await loader.finish(stage, () => sound.pop())
+await loader.finish(stage, () => sound.taq())
 stage.scroll?.unlock()
 html.classList.add('is-ready')
 stage.refresh(true)
 initChapters(stage, experience, sound)
+
+// Build the later worlds while the visitor reads the hero.
+if (experience) {
+  const exp = experience as Experience
+  const idle = (fn: () => void) => ('requestIdleCallback' in window ? requestIdleCallback(fn, { timeout: 2500 }) : setTimeout(fn, 600))
+  idle(() => {
+    void exp.prepare('landscape').then(() => idle(() => void exp.prepare('table')))
+  })
+}
 
 // Debug handle for development and automated captures (`?capture`). Capture
 // mode also lifts the frame-delta clamp so animations keep real-time pace
