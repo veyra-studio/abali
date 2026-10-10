@@ -51,12 +51,13 @@ export function createOpener(): Opener {
   geometry.rotateX(-Math.PI / 2)
   // Brushed stainless steel.
   const material = new THREE.MeshPhysicalMaterial({
-    color: '#d5d9de',
+    color: '#cfd4da',
     metalness: 1,
-    roughness: 0.3,
-    anisotropy: 0.8,
+    // Brushed and a little dull: reflections stay soft as it moves.
+    roughness: 0.4,
+    anisotropy: 0.7,
     anisotropyRotation: Math.PI / 2,
-    envMapIntensity: 1.7,
+    envMapIntensity: 1.6,
   })
   const mesh = new THREE.Mesh(geometry, material)
   const group = new THREE.Group()

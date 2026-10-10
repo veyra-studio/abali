@@ -688,6 +688,8 @@ html.is-ready main {
   pointer-events: none;
   background: radial-gradient(130% 110% at 14% 6%, transparent 42%, rgb(64 42 18 / 0.26) 100%);
   mix-blend-mode: multiply;
+  /* Only over the table, never over the mist before it. */
+  opacity: var(--table-o, 0);
 }
 
 /* ------------------------------------------------------------------ */

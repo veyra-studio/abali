@@ -28,14 +28,19 @@ export interface Table {
   landed(p: number): number
   /** How many menu items are lit at progress `p`. */
   litMenu(p: number): number
+  /** Called the moment a dish touches the cloth (its weight, 0.6…1.3). */
+  onLand: ((weight: number) => void) | null
   update(dt: number, time: number, width: number, height: number, reduced: boolean): void
   dispose(): void
 }
 
 interface Dish {
   object: THREE.Object3D
-  /** Progress at which it touches the cloth. */
+  /** Progress at which it is set down. */
   at: number
+  /** 0 = in the air, out of frame · 1 = resting on the cloth; plays in real time. */
+  clock: number
+  weight: number
   /** Menu item it completes (index into the menu list), or -1. */
   menu: number
   rest: THREE.Vector3
@@ -86,7 +91,7 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
     object.position.set(x, y, z)
     object.rotation.y = rotY
     scene.add(object)
-    dishes.push({ object, at, menu, rest: object.position.clone(), restRot: object.rotation.clone() })
+    dishes.push({ object, at, menu, clock: 0, weight: menu === -1 ? 1.3 : menu === 0 ? 1 : 0.7, rest: object.position.clone(), restRot: object.rotation.clone() })
   }
 
   // Chelow kabab: the plate, rice, two skewers' worth of koobideh, tomatoes.
@@ -153,43 +158,47 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
   const camera = new THREE.PerspectiveCamera(30, 1, 10, 800)
   camera.up.set(0, 0, -1)
 
-  const landing = 0.07
-  let lastP = -1
-  let settleFrames = 0
+  // Each dish is set down by hand in about half a second once the scroll
+  // reaches it, and lifted away again if the scroll goes back.
+  const DOWN = 0.55
+  const UP = 0.35
+  let settleFrames = 3
   const self: Table = {
     scene,
     camera,
     progress: 0,
     count: dishes.length,
+    onLand: null,
     landed: (p) => dishes.filter((d) => p >= d.at).length,
     litMenu(p) {
       let lit = 0
       for (const d of dishes) if (p >= d.at && d.menu >= 0) lit = Math.max(lit, d.menu + 1)
       return lit
     },
-    update(_dt, time, width, height, reduced) {
+    update(dt, time, width, height, reduced) {
       const p = self.progress
-      // Re-render shadows while dishes move, and for a few frames after.
-      if (p !== lastP) settleFrames = 3
-      lastP = p
-      const shadowsDirty = settleFrames > 0
-      if (settleFrames > 0) settleFrames--
+      let moving = false
       for (const d of dishes) {
-        const t = THREE.MathUtils.clamp((p - (d.at - landing)) / landing, 0, 1)
+        const down = p >= d.at
+        const before = d.clock
+        if (reduced) d.clock = down ? 1 : 0
+        else d.clock = THREE.MathUtils.clamp(d.clock + (down ? dt / DOWN : -dt / UP), 0, 1)
+        if (d.clock !== before) moving = true
+        if (before < 0.92 && d.clock >= 0.92 && down) self.onLand?.(d.weight)
+        const t = d.clock
         const o = d.object
         o.visible = t > 0
         if (!o.visible) continue
-        if (reduced) {
-          o.position.copy(d.rest)
-          o.rotation.copy(d.restRot)
-          continue
-        }
-        // Lowered onto the cloth: fast, then settling.
+        // Lowered fast, slowing just before contact; a last soft settle.
         const e = 1 - (1 - t) ** 3
-        const settle = Math.sin(t * Math.PI) * (1 - t) * 0.6
-        o.position.set(d.rest.x, d.rest.y + (1 - e) * 26 + settle, d.rest.z + (1 - e) * -4)
-        o.rotation.set(d.restRot.x + (1 - e) * 0.18, d.restRot.y + (1 - e) * -0.25, d.restRot.z)
+        const settle = t > 0.88 ? Math.sin(((t - 0.88) / 0.12) * Math.PI) * 0.18 : 0
+        o.position.set(d.rest.x, d.rest.y + (1 - e) * 24 + settle, d.rest.z + (1 - e) * -3)
+        o.rotation.set(d.restRot.x + (1 - e) * 0.16, d.restRot.y + (1 - e) * -0.22, d.restRot.z + (1 - e) * 0.05)
       }
+      // Re-render shadows while dishes move, and for a few frames after.
+      if (moving) settleFrames = 3
+      const shadowsDirty = settleFrames > 0
+      if (settleFrames > 0) settleFrames--
       if (shadowsDirty) {
         renderer.shadowMap.needsUpdate = true
         contact.update(renderer, scene)
