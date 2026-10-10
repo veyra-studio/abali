@@ -272,6 +272,7 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     cheerTimer = window.setTimeout(() => {
       cheers.textContent = 'قلپ، قلپ'
       sound.gulps(3)
+      sound.ahh(1.45)
       cheerTimer = window.setTimeout(() => (cheers.textContent = 'آخیش!'), 1500)
     }, 900)
   }
@@ -386,6 +387,7 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     if (akhishIn > 0.1 && !gulped && popped) {
       gulped = true
       sound.gulps(3)
+      sound.ahh(1.45)
     } else if (akhishIn <= 0.02 && akhishP <= 0) gulped = false
     const inMountains = Math.max(akhishIn * 0.6, akhishP > 0 && akhishP < 1 ? 1 - Math.abs(akhishP - 0.45) * 1.2 : 0)
     sound.wind(sofrehIn > 0 ? 0 : 0.6 * inMountains)
