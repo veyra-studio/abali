@@ -17,7 +17,8 @@ VEYRA_CORE_SRC=../veyra-core npm run dev   # alias the engine to its source
 
 - Persian-first: copy lives in `index.html`, in natural Persian (ZWNJ, «٫», Persian digits, «» quotes). Don't add English UI labels.
 - No invented brand facts (history, ingredients, awards, volume). See "Facts used in the copy" in README.md (every fact has a source, also listed in the footer). Keep the unofficial-concept disclaimer.
-- The concept is three sounds: «تق، پیس، آخیش!». Lalezar has no proper «…» glyph: don't put ellipses in Lalezar-set text.
+- The headline is «خنکی صدا دارد.»; the chapters are the sounds of opening a cold one: «تق»، «پیس»، «قلپ، قلپ»، «آخیش». Lalezar has no proper «…» glyph: don't put ellipses in Lalezar-set text.
+- Things that happen (the cap popping, dishes set down, the finale) are triggered by the scroll but play in real time, with real physics, and reverse when you scroll back; only camera moves and transitions follow the scroll directly.
 - The bottle is measured from photographs (`src/gl/bottle.ts`): change the profile only against reference photos, never by eye. Colors live in `src/palette.ts` (and the CSS tokens).
 - Engine code is never patched here; generic capabilities go to veyra-core. Once merged there, CI publishes the `release` branch and this site rebuilds with it (dispatch or hourly check); locally, `npm run engine:update`.
 - Pinned chapters: a tall `.chapter.pinned` wrapper + `.pin` sticky child. Never override `.pin`'s `position: sticky` (it is also the stacking layer above the WebGL canvas).
