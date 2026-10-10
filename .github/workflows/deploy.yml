@@ -1,0 +1,56 @@
+name: Deploy to GitHub Pages
+
+# Builds on every pull request (as a check) and deploys from main to
+# https://veyra-studio.github.io/abali/
+#
+# One-time setup: Settings → Pages → Build and deployment → Source:
+# "GitHub Actions".
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Check the build targets the /abali/ base path
+        run: |
+          grep -q 'src="/abali/assets/' dist/index.html || { echo "::error::dist/index.html does not reference /abali/assets/"; exit 1; }
+          test -f dist/favicon.svg
+          test -f dist/404.html
+      - if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
