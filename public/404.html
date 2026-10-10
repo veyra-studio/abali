@@ -10,23 +10,30 @@
       :root { color-scheme: dark; }
       body {
         margin: 0; min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 1rem;
-        background: #07090c; color: #f4f2ec; text-align: center;
+        background: radial-gradient(120% 80% at 50% 40%, #13213a 0%, #070b13 52%, #05070b 100%);
+        color: #f4f2ec; text-align: center;
         font: 1.05rem/2 system-ui, 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif; padding: 1.5rem;
       }
       h1 { margin: 0; font-size: clamp(1.8rem, 6vw, 3rem); line-height: 1.5; }
       p { margin: 0; color: rgb(244 242 236 / 0.75); }
       a {
-        display: inline-block; margin-top: 0.8rem; padding: 0.6rem 1.3rem; border-radius: 999px;
-        background: #f5dd3a; color: #1f3a8a; font-weight: 700; text-decoration: none;
+        display: inline-block; margin-top: 0.8rem; padding: 0.6rem 1.4rem; border-radius: 999px;
+        background: #f0bd2c; color: #0e1a44; font-weight: 700; text-decoration: none;
       }
-      a:focus-visible { outline: 3px solid #2a8bd3; outline-offset: 3px; }
+      a:focus-visible { outline: 3px solid #2c8ed8; outline-offset: 3px; }
     </style>
   </head>
   <body>
-    <svg width="96" height="96" viewBox="0 0 64 64" aria-hidden="true">
-      <g fill="#24357a"><circle cx="57" cy="32" r="4.4"/><circle cx="55.9" cy="39.4" r="4.4"/><circle cx="52.7" cy="46.2" r="4.4"/><circle cx="47.7" cy="51.7" r="4.4"/><circle cx="41.3" cy="55.3" r="4.4"/><circle cx="34" cy="56.9" r="4.4"/><circle cx="26.6" cy="56.4" r="4.4"/><circle cx="19.7" cy="53.7" r="4.4"/><circle cx="13.9" cy="49.1" r="4.4"/><circle cx="9.7" cy="43" r="4.4"/><circle cx="7.5" cy="35.8" r="4.4"/><circle cx="7.5" cy="28.2" r="4.4"/><circle cx="9.7" cy="21" r="4.4"/><circle cx="13.9" cy="14.9" r="4.4"/><circle cx="19.7" cy="10.3" r="4.4"/><circle cx="26.6" cy="7.6" r="4.4"/><circle cx="34" cy="7.1" r="4.4"/><circle cx="41.3" cy="8.7" r="4.4"/><circle cx="47.7" cy="12.3" r="4.4"/><circle cx="52.7" cy="17.8" r="4.4"/><circle cx="55.9" cy="24.6" r="4.4"/></g>
-      <circle cx="32" cy="32" r="25" fill="#283c86"/><circle cx="32" cy="32" r="17" fill="#f5dd3a"/>
-    </svg>
+    <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true">
+<defs>
+<radialGradient id="fe" cx="38%" cy="32%" r="78%"><stop offset="0" stop-color="#5a64b8"/><stop offset="0.55" stop-color="#2b3173"/><stop offset="1" stop-color="#151940"/></radialGradient>
+<linearGradient id="ft" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c8cde6"/><stop offset="0.5" stop-color="#3b4294"/><stop offset="1" stop-color="#1b1f4f"/></linearGradient>
+</defs>
+<path d="M43.79 15.79 L44.17 3.04 Q48.00 1.08 51.83 3.04 L52.21 15.79 Z M53.47 15.98 L57.59 3.91 Q61.83 3.16 64.91 6.17 L61.52 18.46 Z M62.67 19.01 L70.16 8.70 Q74.43 9.23 76.49 13.01 L69.63 23.76 Z M70.56 24.62 L80.76 16.97 Q84.69 18.74 85.54 22.96 L75.81 31.21 Z M76.45 32.31 L88.45 28.01 Q91.68 30.86 91.25 35.14 L79.52 40.15 Z M79.81 41.39 L92.55 40.82 Q94.79 44.49 93.12 48.46 L80.44 49.79 Z M80.34 51.06 L92.68 54.27 Q93.75 58.44 90.98 61.74 L78.47 59.27 Z M78.00 60.46 L88.85 67.16 Q88.64 71.46 85.02 73.80 L73.79 67.75 Z M73.00 68.75 L81.39 78.35 Q79.92 82.40 75.77 83.56 L66.82 74.48 Z M65.77 75.20 L70.96 86.84 Q68.36 90.28 64.05 90.17 L58.18 78.85 Z M56.97 79.22 L58.49 91.88 Q54.99 94.40 50.91 93.03 L48.64 80.48 Z M47.36 80.48 L45.09 93.03 Q41.01 94.40 37.51 91.88 L39.03 79.22 Z M37.82 78.85 L31.95 90.17 Q27.64 90.28 25.04 86.84 L30.23 75.20 Z M29.18 74.48 L20.23 83.56 Q16.08 82.40 14.61 78.35 L23.00 68.75 Z M22.21 67.75 L10.98 73.80 Q7.36 71.46 7.15 67.16 L18.00 60.46 Z M17.53 59.27 L5.02 61.74 Q2.25 58.44 3.32 54.27 L15.66 51.06 Z M15.56 49.79 L2.88 48.46 Q1.21 44.49 3.45 40.82 L16.19 41.39 Z M16.48 40.15 L4.75 35.14 Q4.32 30.86 7.55 28.01 L19.55 32.31 Z M20.19 31.21 L10.46 22.96 Q11.31 18.74 15.24 16.97 L25.44 24.62 Z M26.37 23.76 L19.51 13.01 Q21.57 9.23 25.84 8.70 L33.33 19.01 Z M34.48 18.46 L31.09 6.17 Q34.17 3.16 38.41 3.91 L42.53 15.98 Z" fill="url(#ft)"/>
+<circle cx="48.0" cy="48.0" r="34.29" fill="url(#fe)"/>
+<circle cx="48.0" cy="48.0" r="27.97" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="2.40"/>
+<path d="M25.44 33.56 A27.07 27.07 0 0 1 52.51 20.93" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="3.36" stroke-linecap="round"/>
+</svg>
     <h1>این صفحه پیدا نشد.</h1>
     <p>شاید درِ این بطری هنوز باز نشده.</p>
     <a href="/abali/">بازگشت به آبعلی</a>
