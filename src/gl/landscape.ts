@@ -6,7 +6,7 @@
  */
 import * as THREE from 'three'
 import { heightfield, seededRandom, type HeightfieldMesh } from '@veyra/core'
-import { glslNoiseTexture } from '@veyra/core/glsl'
+import { glslHash, glslNoiseTexture } from '@veyra/core/glsl'
 import { meshGeometry, noiseTexture } from '@veyra/core/three'
 import { CONE, SIZE, SUN_DIR, valleyX } from './alborz'
 import type { Quality } from './studio'
@@ -46,13 +46,18 @@ const atmosphere = /* glsl */ `
   uniform vec3 uSunColor;
   uniform vec3 uZenith;
   uniform vec3 uHorizon;
+  uniform vec3 uHorizonSun;
   vec3 skyColor(vec3 dir) {
     float h = dir.y;
-    vec3 col = mix(uHorizon, uZenith, pow(smoothstep(-0.03, 0.7, h), 0.55));
+    // The horizon warms toward the low sun and stays cool away from it.
+    vec2 across = normalize(dir.xz + 1e-5);
+    float toward = pow(max(dot(across, normalize(uSunDir.xz)), 0.0), 3.0);
+    vec3 horizon = mix(uHorizon, uHorizonSun, toward);
+    vec3 col = mix(horizon, uZenith, pow(smoothstep(-0.03, 0.75, h), 0.5));
     float s = max(dot(dir, uSunDir), 0.0);
-    col += uSunColor * (pow(s, 9.0) * 0.22 + pow(s, 60.0) * 0.35);
+    col += uSunColor * (pow(s, 6.0) * 0.3 + pow(s, 40.0) * 0.45);
     // Below the horizon: the haze of the far valley.
-    col = mix(col, uHorizon * 0.96, smoothstep(0.0, -0.12, h));
+    col = mix(col, horizon * 0.96, smoothstep(0.0, -0.12, h));
     return col;
   }
 `
@@ -61,6 +66,7 @@ const atmosphere = /* glsl */ `
 const CELLS = 8
 
 const terrainFragment = /* glsl */ `
+  ${glslHash}
   ${glslNoiseTexture}
   ${atmosphere}
   uniform sampler2D uNoise;
@@ -122,6 +128,13 @@ const terrainFragment = /* glsl */ `
     // Snow in shade glows blue from the sky; lit snow sparkles a little.
     col += snow * (1.0 - sun) * vec3(0.02, 0.05, 0.12) * vOcclusion;
     col += snow * sun * pow(max(dot(reflect(dir, nd), uSunDir), 0.0), 40.0) * 0.25;
+  #ifndef LITE
+    // Fresh snow in low sun: now and then a crystal catches it and flashes
+    // as the camera moves.
+    vec3 crystal = floor(vWorld * 0.7);
+    float glint = step(0.9972, hash13(crystal)) * pow(max(dot(reflect(dir, nd), uSunDir), 0.0), 3.0);
+    col += vec3(1.0, 0.95, 0.86) * glint * snow * sun * smoothstep(9000.0, 1500.0, dist) * 3.0;
+  #endif
     // Aerial perspective, plus mist pooled in the valley.
     float haze = 1.0 - exp(-dist * uHaze);
     float mist = exp(-max(0.0, vWorld.y - 80.0) * 0.004) * smoothstep(2500.0, 8000.0, dist) * uValleyMist;
@@ -157,15 +170,17 @@ const skyFragment = /* glsl */ `
   void main() {
     vec3 dir = normalize(vDir);
     vec3 col = skyColor(dir);
-    // High, thin cloud.
+    // A few high, thin clouds, lit warm on the side of the sun.
     if (dir.y > 0.0) {
       vec2 p = dir.xz / (dir.y + 0.15) * 1.6 + vec2(uTime * 0.004, 0.0);
     #ifdef LITE
-      float c = smoothstep(0.1, 0.75, tfbm(uNoise, ${CELLS}.0, p, 2) * 0.5 + 0.5) * smoothstep(0.0, 0.25, dir.y);
+      const int octaves = 2;
     #else
-      float c = smoothstep(0.1, 0.75, tfbm(uNoise, ${CELLS}.0, p, 5) * 0.5 + 0.5) * smoothstep(0.0, 0.25, dir.y);
+      const int octaves = 5;
     #endif
-      col = mix(col, vec3(1.0, 0.99, 0.97) * (0.92 + 0.15 * pow(max(dot(dir, uSunDir), 0.0), 6.0)), c * 0.55);
+      float c = smoothstep(0.42, 0.88, tfbm(uNoise, ${CELLS}.0, p, octaves) * 0.5 + 0.5) * smoothstep(0.0, 0.25, dir.y);
+      float lit = pow(max(dot(normalize(dir.xz + 1e-5), normalize(uSunDir.xz)), 0.0), 2.0);
+      col = mix(col, mix(vec3(0.93, 0.95, 0.98), vec3(1.0, 0.86, 0.72), lit * 0.8), c * 0.36);
     }
     gl_FragColor = vec4(col, 1.0);
     #include <tonemapping_fragment>
@@ -240,15 +255,17 @@ export async function createLandscape(renderer: THREE.WebGLRenderer, quality: Qu
   const common = {
     uNoise: { value: noise },
     uSunDir: { value: SUN.clone() },
-    uSunColor: { value: new THREE.Color('#fff1dc') },
-    uZenith: { value: new THREE.Color('#2b5fa9') },
-    uHorizon: { value: new THREE.Color('#c6d9ea') },
+    // Early light: warm on the snow, the sky deep overhead, cold in the shade.
+    uSunColor: { value: new THREE.Color('#ffd3a3') },
+    uZenith: { value: new THREE.Color('#1c4a93') },
+    uHorizon: { value: new THREE.Color('#b9cfe6') },
+    uHorizonSun: { value: new THREE.Color('#f3d2b0') },
   }
   const camPos = { value: new THREE.Vector3() }
   const terrainMaterial = new THREE.ShaderMaterial({
     vertexShader: terrainVertex,
     fragmentShader: terrainFragment,
-    uniforms: { ...common, uCamPos: camPos, uHaze: { value: 0.000028 }, uValleyMist: { value: 0.45 } },
+    uniforms: { ...common, uCamPos: camPos, uHaze: { value: 0.00002 }, uValleyMist: { value: 0.38 } },
   })
   const terrain = new THREE.Mesh(geometry, terrainMaterial)
   terrain.frustumCulled = false

@@ -7,7 +7,8 @@
 import { erodedNoise, ridgedNoise, smoothstep } from '@veyra/core'
 
 export const SIZE = 26000
-export const SUN_DIR: readonly [number, number, number] = [0.78, 0.36, -0.5]
+/** A low morning sun from the east, a little in front: long shadows, warm faces, alpenglow on the cone. */
+export const SUN_DIR: readonly [number, number, number] = [0.74, 0.24, 0.28]
 export const CONE = { x: 1800, z: -9800, radius: 7400, height: 5200 }
 
 /** Valley floor follows a gentle meander up the z axis. */
