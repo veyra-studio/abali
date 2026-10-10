@@ -3,6 +3,8 @@
  * - foam: a milky front with a bubbly crest that rises and covers the screen
  *   (the bottle "boils over");
  * - mist: white that thins in patches, the way cloud clears off a slope.
+ *   The foam can dissolve into mist of its own color (`uFoamFade`), and the
+ *   mist cools as it clears (`uMistCool`), so one becomes the other.
  */
 import * as THREE from 'three'
 import { glslHash, glslNoise } from '@veyra/core/glsl'
@@ -22,7 +24,9 @@ const fragmentShader = /* glsl */ `
   uniform vec2 uRes;
   uniform float uTime;
   uniform float uFoam;
+  uniform float uFoamFade;
   uniform float uMist;
+  uniform float uMistCool;
   uniform float uDark;
   uniform vec3 uInk;
   uniform vec3 uMilk;
@@ -65,12 +69,13 @@ const fragmentShader = /* glsl */ `
     vec2 uv = vUv;
     vec2 p = (uv - 0.5) * vec2(aspect, 1.0);
     vec4 outc = vec4(0.0);
-    if (uFoam > -0.2) outc = foamFront(uv, p, uFoam, uTime);
+    if (uFoam > -0.2) outc = foamFront(uv, p, uFoam, uTime) * (1.0 - uFoamFade);
     if (uMist > 0.0) {
       float n = fbm(vec3(p * 1.8, uTime * 0.04), 5) * 0.5 + 0.5;
       float n2 = fbm(vec3(p * 5.0 + 3.0, uTime * 0.07), 3) * 0.5 + 0.5;
       float a = smoothstep(0.0, 0.35, uMist * 1.35 - (1.0 - n) * 0.9 - n2 * 0.12);
-      vec4 mist = vec4(uMistColor * a, a);
+      vec3 mistColor = mix(uMilk, uMistColor, uMistCool);
+      vec4 mist = vec4(mistColor * a, a);
       outc = outc + mist * (1.0 - outc.a);
     }
     if (uDark > 0.0) outc = vec4(uInk * uDark, uDark) + outc * (1.0 - uDark);
@@ -86,7 +91,15 @@ export interface Veil {
   mesh: THREE.Mesh
   scene: THREE.Scene
   camera: THREE.Camera
-  uniforms: { uRes: { value: THREE.Vector2 }; uTime: { value: number }; uFoam: { value: number }; uMist: { value: number }; uDark: { value: number } }
+  uniforms: {
+    uRes: { value: THREE.Vector2 }
+    uTime: { value: number }
+    uFoam: { value: number }
+    uFoamFade: { value: number }
+    uMist: { value: number }
+    uMistCool: { value: number }
+    uDark: { value: number }
+  }
   /** Whether anything is drawn. */
   readonly active: boolean
   dispose(): void
@@ -99,7 +112,9 @@ export function createVeil(): Veil {
     uRes: { value: new THREE.Vector2(1, 1) },
     uTime: { value: 0 },
     uFoam: { value: -1 },
+    uFoamFade: { value: 0 },
     uMist: { value: 0 },
+    uMistCool: { value: 1 },
     uDark: { value: 0 },
     uInk: { value: new THREE.Color(colors.ink) },
     uMilk: { value: new THREE.Color(colors.milk) },
@@ -129,7 +144,7 @@ export function createVeil(): Veil {
     camera,
     uniforms,
     get active() {
-      return uniforms.uFoam.value > -0.2 || uniforms.uMist.value > 0.001 || uniforms.uDark.value > 0.001
+      return (uniforms.uFoam.value > -0.2 && uniforms.uFoamFade.value < 0.999) || uniforms.uMist.value > 0.001 || uniforms.uDark.value > 0.001
     },
     dispose() {
       geometry.dispose()

@@ -36,10 +36,8 @@ export interface StudioState {
   floor: number
   /** 0…1 ice. */
   ice: number
-  /** Opener choreography: 0 away · 0.5 hooked under the cap · 1 levered. */
+  /** Opener approach (scrolled): 0 away · 1 hooked under the cap. The lever and the pop play in real time (`openWithOpener`). */
   opener: number
-  /** Scroll-scrubbed cap: 0 on · 0.25 pried open · 1 gone. */
-  capScrub: number
   /** Cold wisp over the mouth: amount and how high it has climbed. */
   plume: number
   plumeRise: number
@@ -53,13 +51,17 @@ export interface Studio {
   product: THREE.Group
   bottle: Bottle
   state: StudioState
-  /** Pops the cap in real time (the finale button). */
+  /** Pops the cap by hand (the finale button): it flies up and away. */
   popCap(): void
-  /** Puts it back. */
+  /** The opener levers and the cap snaps off sideways (the «تق» beat). */
+  openWithOpener(): void
+  /** Puts the cap back on (and the opener back on the cap, if it was used). */
   resetCap(): void
-  /** True while a time-based pop is under way or the cap is off. */
-  readonly capOff: boolean
-  update(dt: number, time: number, pointer: { snx: number; sny: number } | null, reduced: boolean): void
+  /** Sets the cap on or off at once, without animation (when the studio comes back into view). */
+  setCap(on: boolean): void
+  /** Seconds since the cap came off, or -1 while it is on. */
+  readonly openFor: number
+  update(dt: number, time: number, pointer: { snx: number; sny: number; vx: number; vy: number } | null, reduced: boolean): void
   /** Renders the reflection and contact shadow (call before rendering the scene). */
   prepare(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera): void
   dispose(): void
@@ -116,7 +118,6 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
     floor: 1,
     ice: 1,
     opener: 0,
-    capScrub: 0,
     plume: 0,
     plumeRise: 0,
     foam: 0,
@@ -126,14 +127,22 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
   // Motion.
   const tiltX = new Spring(0, { stiffness: 60, damping: 14 })
   const tiltZ = new Spring(0, { stiffness: 60, damping: 14 })
-  const wobble = new Spring(0, { stiffness: 220, damping: 7 })
-  let idleAngle = 0
-  let shakeTime = 0
-  // Time-based cap: < 0 capped; ≥ 0 seconds since the pop.
+  // The bottle rocks on its base when shaken: springs pushed by the hand's velocity.
+  const rockZ = new Spring(0, { stiffness: 140, damping: 7 })
+  const rockX = new Spring(0, { stiffness: 140, damping: 8 })
+  const kick = new Spring(0, { stiffness: 220, damping: 9 })
+  // The opener's prying and retreat, both reversible.
+  const lever = new Spring(0, { stiffness: 340, damping: 26 })
+  const retract = new Spring(0, { stiffness: 70, damping: 15 })
+  let idleClock = 0
+  let shiver = 0
+  // The cap: < 0 on; ≥ 0 seconds since it came off.
   let popT = -1
+  let byOpener = false
   let recap = -1
   const popVel = new THREE.Vector3()
   const popSpin = new THREE.Vector3()
+  let gravity = 1.7
 
   let shadowKey = ''
   let shadowAge = 0
@@ -150,26 +159,59 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
     bottle.cap.position.set(capPivot.x + dx * c - dy * s, capPivot.y + dx * s + dy * c, 0)
     bottle.cap.rotation.set(0, 0, angle)
   }
+  // Where the opener's hook bites the cap, and the pose it levers around.
+  const HOOK = new THREE.Vector3(BOTTLE.capRadius * 0.55, BOTTLE.capTop + 0.004, 0.03)
+  const PIVOT = new THREE.Vector3(-BOTTLE.capRadius * 0.85, BOTTLE.capTop + 0.004, 0.03)
+  const tmp = new THREE.Vector3()
 
   const studio: Studio = {
     scene,
     product,
     bottle,
     state,
-    get capOff() {
-      return popT >= 0 || state.capScrub > 0.25
+    get openFor() {
+      return popT
     },
     popCap() {
       if (popT >= 0) return
       popT = 0
+      byOpener = false
       recap = -1
+      gravity = 1.7
       popVel.set(0.22 + Math.random() * 0.12, 1.25 + Math.random() * 0.2, 0.3)
       popSpin.set(8 + Math.random() * 4, (Math.random() - 0.5) * 5, -6 - Math.random() * 4)
-      wobble.impulse(2.2)
+      kick.impulse(2.2)
+    },
+    openWithOpener() {
+      if (popT >= 0) return
+      popT = 0
+      byOpener = true
+      recap = -1
+      // Pried off the far rim: a short hop sideways, toward us, flipping.
+      gravity = 3.2
+      popVel.set(-0.28 - Math.random() * 0.06, 0.62 + Math.random() * 0.08, 0.22)
+      popSpin.set(7 + Math.random() * 3, (Math.random() - 0.5) * 3, 5 + Math.random() * 3)
+      kick.impulse(1.4)
     },
     resetCap() {
+      if (popT < 0 && recap < 0) return
       popT = -1
       recap = 0
+    },
+    setCap(on) {
+      recap = -1
+      if (on) {
+        popT = -1
+        byOpener = false
+        lever.snap(0)
+        retract.snap(0)
+      } else if (popT < 0) {
+        // Off, long gone: past the flight and the opener's retreat.
+        popT = 10
+        byOpener = true
+        lever.snap(1)
+        retract.snap(1)
+      }
     },
     update(dt, time, pointer, reduced) {
       const S = state.scale
@@ -186,14 +228,24 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
       tiltZ.target = (pointer ? -pointer.snx : 0) * 0.06 * tiltAmount
       tiltX.step(dt)
       tiltZ.step(dt)
-      if (!reduced) idleAngle += dt * 0.32 * state.idle
-      const idleTurn = Math.sin(idleAngle) * 0.38 * state.idle
-      shakeTime += dt * (8 + state.shake * 18)
-      wobble.step(dt)
-      const shakeA = reduced ? 0 : state.shake
-      const shakeZ = Math.sin(shakeTime * 1.7) * 0.1 * shakeA + wobble.value * 0.05
-      const shakeX = Math.cos(shakeTime * 2.3) * 0.06 * shakeA
-      bottle.group.rotation.set(state.tiltX + tiltX.value + shakeX, state.turn + idleTurn, tiltZ.value + shakeZ)
+      // A slow, uneven sway, like a bottle on a turntable someone nudged.
+      if (!reduced) idleClock += dt * state.idle
+      const idleTurn = (Math.sin(idleClock * 0.21) * 0.2 + Math.sin(idleClock * 0.077 + 1.3) * 0.09) * state.idle
+      // Shaking: the hand's velocity pushes the bottle, which rocks back on its springs.
+      const shakeA = reduced ? 0 : Math.min(1, state.shake * 1.5 + (state.shake > 0 ? 0.25 : 0))
+      if (pointer && shakeA > 0) {
+        rockZ.velocity += (-pointer.vx / 900) * shakeA * dt * 60 * 0.06
+        rockX.velocity += (pointer.vy / 900) * shakeA * dt * 60 * 0.04
+      }
+      rockZ.step(dt)
+      rockX.step(dt)
+      kick.step(dt)
+      // Under pressure the glass shivers a little: the gas is fighting the cap.
+      shiver += dt * 70
+      const buzz = reduced ? 0 : Math.max(0, state.shake - 0.5) * 0.012
+      const rz = THREE.MathUtils.clamp(rockZ.value, -0.22, 0.22) + kick.value * 0.04 + Math.sin(shiver) * buzz
+      const rx = THREE.MathUtils.clamp(rockX.value, -0.15, 0.15) + Math.cos(shiver * 1.3) * buzz
+      bottle.group.rotation.set(state.tiltX + tiltX.value + rx, state.turn + idleTurn, tiltZ.value + rz)
 
       // Ice and floor.
       ice.group.visible = state.ice > 0.01
@@ -211,46 +263,67 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
         shadow.opacity = 0.8 * state.floor
       }
 
-      // Opener: slides in from the reading side, hooks, levers.
-      const o = state.opener
-      opener.group.visible = o > 0.001 && o < 0.999
+      // Opener: slides in (scrolled), then levers and withdraws (in real time).
+      lever.target = byOpener && popT >= 0 ? 1 : 0
+      retract.target = byOpener && popT >= 0.16 ? 1 : 0
+      if (reduced) {
+        lever.snap(lever.target)
+        retract.snap(retract.target)
+      } else {
+        lever.step(dt)
+        retract.step(dt)
+      }
+      const a = THREE.MathUtils.clamp(state.opener, 0, 1)
+      const l = THREE.MathUtils.clamp(lever.value, 0, 1.2)
+      const w = THREE.MathUtils.clamp(retract.value, 0, 1.2)
+      opener.group.visible = a > 0.001 && w < 0.98
       if (opener.group.visible) {
-        const approach = THREE.MathUtils.smoothstep(o, 0, 0.5)
-        const lever = THREE.MathUtils.smoothstep(o, 0.5, 0.8)
-        const leave = THREE.MathUtils.smoothstep(o, 0.8, 1)
-        // Its face turned toward us so the steel catches the light.
-        opener.group.position.set(lerp(0.9, BOTTLE.capRadius * 0.55, approach) + leave * 0.5, BOTTLE.capTop + 0.004 + lerp(0.18, 0, approach) + leave * 0.25, 0.03)
-        opener.group.rotation.set(0.95, 0, lerp(-0.35, 0, approach) + lever * 0.42 - leave * 0.6)
+        // Approach on a straight, slightly descending line; the face keeps its
+        // angle to the light, so the steel never flips from bright to dark.
+        const e = a * a * (3 - 2 * a)
+        tmp.set(lerp(0.95, HOOK.x, e), lerp(HOOK.y + 0.16, HOOK.y, e), HOOK.z)
+        // Lever: rotate about the pivot on the far rim, lifting the handle.
+        const angle = l * 0.38
+        const dx = tmp.x - PIVOT.x
+        const dy = tmp.y - PIVOT.y
+        const c = Math.cos(angle)
+        const sn = Math.sin(angle)
+        opener.group.position.set(PIVOT.x + dx * c - dy * sn + w * 0.55, PIVOT.y + dx * sn + dy * c + w * 0.32, HOOK.z)
+        opener.group.rotation.set(0.95, 0, angle - w * 0.35)
       }
 
       // Cap.
       const cap = bottle.cap
-      if (state.capScrub > 0) {
-        // Scrubbed by scroll: pried open (hinged), then flying.
-        const c = state.capScrub
-        if (c < 0.25) {
-          hinge((c / 0.25) * 0.5)
-          cap.visible = true
-        } else {
-          const t = (c - 0.25) / 0.75
-          // A short arc away from the opener, flipping, then down out of frame.
-          cap.visible = t < 0.98
-          cap.position.set(-BOTTLE.capRadius * 0.4 - 0.32 * t, 0.012 + 0.34 * t - 0.62 * t * t, 0.06 * t)
-          cap.rotation.set(5.5 * t, -1.5 * t, 0.5 + 4 * t)
-        }
+      if (popT >= 0 && reduced) {
+        // No flight under reduced motion: the cap is simply off.
+        popT += dt
+        cap.visible = false
       } else if (popT >= 0) {
         popT += dt
         const t = popT
-        cap.visible = t < 2.2
-        cap.position.set(popVel.x * t, popVel.y * t - 1.7 * t * t, popVel.z * t)
-        cap.rotation.set(popSpin.x * t, popSpin.y * t, popSpin.z * t)
+        if (byOpener && t < 0.06) {
+          // The first instant: the hook pries the rim up.
+          hinge((t / 0.06) * 0.42)
+          cap.visible = true
+        } else {
+          const ft = byOpener ? t - 0.06 : t
+          const x0 = byOpener ? -BOTTLE.capRadius * 0.3 : 0
+          const y0 = byOpener ? 0.012 : 0
+          cap.visible = ft < 2.2
+          cap.position.set(x0 + popVel.x * ft, y0 + popVel.y * ft - gravity * ft * ft, popVel.z * ft)
+          cap.rotation.set(popSpin.x * ft, popSpin.y * ft, (byOpener ? 0.42 : 0) + popSpin.z * ft)
+        }
       } else if (recap >= 0) {
+        // Back on: it drops onto the lip and settles with a quarter turn.
         recap = Math.min(1, recap + dt * 1.8)
         const e = 1 - (1 - recap) ** 3
         cap.visible = true
         cap.position.set(0, (1 - e) * 0.3, 0)
         cap.rotation.set(0, (1 - e) * 3, 0)
-        if (recap >= 1) recap = -1
+        if (recap >= 1) {
+          recap = -1
+          byOpener = false
+        }
       } else {
         cap.visible = true
         cap.position.set(0, 0, 0)
@@ -273,7 +346,7 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
         // A turned bottle casts the same shadow as it spins: re-render only
         // when it moves, tilts or is scaled (and now and then for the ice).
         const r = bottle.group.rotation
-        const key = `${Math.round(state.x)}|${Math.round(state.baseY)}|${Math.round(state.scale)}|${r.x.toFixed(3)}|${r.z.toFixed(3)}|${bottle.cap.visible}`
+        const key = `${Math.round(state.x)}|${Math.round(state.baseY)}|${Math.round(state.scale)}|${r.x.toFixed(3)}|${r.z.toFixed(3)}|${bottle.cap.visible}|${popT >= 0}`
         if (key !== shadowKey || ++shadowAge > 30) {
           shadowKey = key
           shadowAge = 0

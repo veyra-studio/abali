@@ -28,14 +28,21 @@ export interface Table {
   landed(p: number): number
   /** How many menu items are lit at progress `p`. */
   litMenu(p: number): number
+  /** Called the moment a dish touches the cloth (its weight, 0.6…1.3). */
+  onLand: ((weight: number) => void) | null
+  /** Fraction of the viewport's height that the copy covers from the top (portrait screens frame the spread below it). */
+  cover: number
   update(dt: number, time: number, width: number, height: number, reduced: boolean): void
   dispose(): void
 }
 
 interface Dish {
   object: THREE.Object3D
-  /** Progress at which it touches the cloth. */
+  /** Progress at which it is set down. */
   at: number
+  /** 0 = in the air, out of frame · 1 = resting on the cloth; plays in real time. */
+  clock: number
+  weight: number
   /** Menu item it completes (index into the menu list), or -1. */
   menu: number
   rest: THREE.Vector3
@@ -86,32 +93,48 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
     object.position.set(x, y, z)
     object.rotation.y = rotY
     scene.add(object)
-    dishes.push({ object, at, menu, rest: object.position.clone(), restRot: object.rotation.clone() })
+    dishes.push({ object, at, menu, clock: 0, weight: menu === -1 ? 1.3 : menu === 0 ? 1 : 0.7, rest: object.position.clone(), restRot: object.rotation.clone() })
   }
 
   // Chelow kabab: the plate, rice, two skewers' worth of koobideh, tomatoes.
-  const plate = createPlate()
+  // Positions on the plate are in its own frame (centimetres from its center).
+  const PLATE = new THREE.Vector2(-24, -3)
+  const plate = createPlate(1.1)
   const rice = createRice({ quality })
   const platter = new THREE.Group()
   platter.add(plate.mesh)
-  rice.group.position.set(-5.2, plate.well, 0.6)
+  rice.group.position.set(-5.4, plate.well, 0.2)
   platter.add(rice.group)
   disposers.push(plate.dispose, rice.dispose)
-  add(platter, -24, -3, 0, 0.12, 0)
+  add(platter, PLATE.x, PLATE.y, 0, 0.12, 0)
 
-  const kebabs = [createKebab({ seed: 3, quality }), createKebab({ seed: 7, quality, length: 21 })]
-  kebabs.forEach((k, i) => {
+  // Side by side along the rice; where a kebab reaches the rim, it rides up it.
+  const skewers = [
+    { x: 5.3, z: 0.9, length: 19.5, turn: 0.06, seed: 3 },
+    { x: 9, z: 0, length: 16.5, turn: 0.08, seed: 7 },
+  ]
+  skewers.forEach((k, i) => {
+    const rotY = Math.PI / 2 + k.turn
+    const cos = Math.cos(rotY)
+    const sin = Math.sin(rotY)
+    const ground = (x: number, z: number) => Math.max(0, plate.surfaceAt(Math.hypot(k.x + x * cos + z * sin, k.z - x * sin + z * cos)) - plate.well)
+    const kebab = createKebab({ seed: k.seed, quality, length: k.length, ground })
     const g = new THREE.Group()
-    g.add(k.mesh)
-    disposers.push(k.dispose)
-    add(g, -16.5 + i * 4.2, -1.5 + i * 0.6, Math.PI / 2 + 0.1 - i * 0.06, 0.2 + i * 0.06, 1, plate.well)
+    g.add(kebab.mesh)
+    disposers.push(kebab.dispose)
+    add(g, PLATE.x + k.x, PLATE.y + k.z, rotY, 0.2 + i * 0.06, 1, plate.well)
   })
-  const tomatoes = [createTomato({ seed: 2, quality, size: 5.6 }), createTomato({ seed: 5, quality, size: 5 })]
-  tomatoes.forEach((t, i) => {
+  // One beyond the rice at the top, one tucked between the rice and a kebab.
+  const grilled = [
+    { x: 0.2, z: -9.8, size: 5.6, seed: 2 },
+    { x: 1.4, z: 8.8, size: 5, seed: 5 },
+  ]
+  grilled.forEach((t, i) => {
+    const tomato = createTomato({ seed: t.seed, quality, size: t.size })
     const g = new THREE.Group()
-    g.add(t.mesh)
-    disposers.push(t.dispose)
-    add(g, -17 + i * 6.4, -14.2 + i * 1.6, i * 1.3, 0.33 + i * 0.05, 2, plate.well - 0.1)
+    g.add(tomato.mesh)
+    disposers.push(tomato.dispose)
+    add(g, PLATE.x + t.x, PLATE.y + t.z, i * 1.3, 0.33 + i * 0.05, 2, plate.well - 0.08)
   })
 
   // Onion, sumac, bread and herbs.
@@ -153,56 +176,62 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
   const camera = new THREE.PerspectiveCamera(30, 1, 10, 800)
   camera.up.set(0, 0, -1)
 
-  const landing = 0.07
-  let lastP = -1
-  let settleFrames = 0
+  // Each dish is set down by hand in about half a second once the scroll
+  // reaches it, and lifted away again if the scroll goes back.
+  const DOWN = 0.55
+  const UP = 0.35
+  let settleFrames = 3
   const self: Table = {
     scene,
     camera,
     progress: 0,
     count: dishes.length,
+    onLand: null,
+    cover: 0,
     landed: (p) => dishes.filter((d) => p >= d.at).length,
     litMenu(p) {
       let lit = 0
       for (const d of dishes) if (p >= d.at && d.menu >= 0) lit = Math.max(lit, d.menu + 1)
       return lit
     },
-    update(_dt, time, width, height, reduced) {
+    update(dt, time, width, height, reduced) {
       const p = self.progress
-      // Re-render shadows while dishes move, and for a few frames after.
-      if (p !== lastP) settleFrames = 3
-      lastP = p
-      const shadowsDirty = settleFrames > 0
-      if (settleFrames > 0) settleFrames--
+      let moving = false
       for (const d of dishes) {
-        const t = THREE.MathUtils.clamp((p - (d.at - landing)) / landing, 0, 1)
+        const down = p >= d.at
+        const before = d.clock
+        if (reduced) d.clock = down ? 1 : 0
+        else d.clock = THREE.MathUtils.clamp(d.clock + (down ? dt / DOWN : -dt / UP), 0, 1)
+        if (d.clock !== before) moving = true
+        if (before < 0.92 && d.clock >= 0.92 && down) self.onLand?.(d.weight)
+        const t = d.clock
         const o = d.object
         o.visible = t > 0
         if (!o.visible) continue
-        if (reduced) {
-          o.position.copy(d.rest)
-          o.rotation.copy(d.restRot)
-          continue
-        }
-        // Lowered onto the cloth: fast, then settling.
+        // Lowered fast, slowing just before contact; a last soft settle.
         const e = 1 - (1 - t) ** 3
-        const settle = Math.sin(t * Math.PI) * (1 - t) * 0.6
-        o.position.set(d.rest.x, d.rest.y + (1 - e) * 26 + settle, d.rest.z + (1 - e) * -4)
-        o.rotation.set(d.restRot.x + (1 - e) * 0.18, d.restRot.y + (1 - e) * -0.25, d.restRot.z)
+        const settle = t > 0.88 ? Math.sin(((t - 0.88) / 0.12) * Math.PI) * 0.18 : 0
+        o.position.set(d.rest.x, d.rest.y + (1 - e) * 24 + settle, d.rest.z + (1 - e) * -3)
+        o.rotation.set(d.restRot.x + (1 - e) * 0.16, d.restRot.y + (1 - e) * -0.22, d.restRot.z + (1 - e) * 0.05)
       }
+      // Re-render shadows while dishes move, and for a few frames after.
+      if (moving) settleFrames = 3
+      const shadowsDirty = settleFrames > 0
+      if (settleFrames > 0) settleFrames--
       if (shadowsDirty) {
         renderer.shadowMap.needsUpdate = true
         contact.update(renderer, scene)
       }
-      // Frame the spread: wide screens see it all; tall ones a narrower column.
+      // Frame the spread: wide screens see it all; tall ones a narrower column
+      // (x −50…4, z −41…26 cm), set below whatever copy covers the top.
       const aspect = width / height
       camera.aspect = aspect
       const portrait = aspect < 0.8
-      const span = portrait ? 50 : 66 // cm across the short side
       camera.fov = 28
-      const dist = span / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / Math.min(1, aspect)
+      const visible = portrait ? Math.max(50 / aspect, 70 / (1 - self.cover)) : 66 / Math.min(1, aspect) // cm, top to bottom
+      const dist = visible / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
       const drift = reduced ? 0 : Math.sin(time * 0.15) * 0.4
-      camera.position.set(portrait ? -22 : -8 + drift, Math.min(dist, 420), portrait ? 6 : -2)
+      camera.position.set(portrait ? -22 : -8 + drift, Math.min(dist, 420), portrait ? -7.5 - (self.cover / 2) * visible : -2)
       camera.lookAt(camera.position.x, 0, camera.position.z)
       camera.updateProjectionMatrix()
     },

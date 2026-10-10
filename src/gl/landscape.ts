@@ -6,8 +6,8 @@
  */
 import * as THREE from 'three'
 import { heightfield, seededRandom, type HeightfieldMesh } from '@veyra/core'
-import { glslNoise } from '@veyra/core/glsl'
-import { meshGeometry } from '@veyra/core/three'
+import { glslNoiseTexture } from '@veyra/core/glsl'
+import { meshGeometry, noiseTexture } from '@veyra/core/three'
 import { CONE, SIZE, SUN_DIR, valleyX } from './alborz'
 import type { Quality } from './studio'
 
@@ -16,6 +16,8 @@ export interface Landscape {
   camera: THREE.PerspectiveCamera
   /** Scroll progress through the chapter 0…1. */
   progress: number
+  /** Follow the quality tier: the low tier draws a lean terrain without fine relief. */
+  setQuality(quality: Quality): void
   update(dt: number, time: number, width: number, height: number, reduced: boolean): void
   dispose(): void
 }
@@ -55,9 +57,13 @@ const atmosphere = /* glsl */ `
   }
 `
 
+/** Noise cells per side of the noise texture every shader here reads. */
+const CELLS = 8
+
 const terrainFragment = /* glsl */ `
-  ${glslNoise}
+  ${glslNoiseTexture}
   ${atmosphere}
+  uniform sampler2D uNoise;
   uniform vec3 uCamPos;
   uniform float uHaze;
   uniform float uValleyMist;
@@ -65,29 +71,49 @@ const terrainFragment = /* glsl */ `
   varying vec3 vNormal;
   varying float vSun;
   varying float vOcclusion;
+  const float CELLS = ${CELLS}.0;
+  // Noise on the surface without stretching on steep faces (triplanar),
+  // read from the noise texture.
+  float surface(vec3 p, vec3 n, int octaves) { return tfbm(uNoise, CELLS, p, n, octaves); }
   void main() {
     vec3 n = normalize(vNormal);
-    // Fine relief: perturb the normal with noise so slopes read as rock and drifts.
-    vec2 q = vWorld.xz * 0.012;
-    float e = 0.6;
-    float n0 = fbm(q, 4);
-    vec3 bump = vec3(fbm(q + vec2(e, 0.0), 4) - n0, 0.0, fbm(q + vec2(0.0, e), 4) - n0) * 0.7;
-    vec3 view0 = vWorld - uCamPos;
-    float near = 1.0 - smoothstep(1500.0, 9000.0, length(view0));
-    // Relief at two scales: rock and drift close by, ribs and gullies further off.
-    vec2 q2 = vWorld.xz * 0.0028;
-    float m0 = fbm(q2, 4);
-    vec3 bump2 = vec3(fbm(q2 + vec2(0.25, 0.0), 4) - m0, 0.0, fbm(q2 + vec2(0.0, 0.25), 4) - m0) * 1.1;
-    float mid = 1.0 - smoothstep(6000.0, 22000.0, length(view0));
-    vec3 nd = normalize(n - bump * (1.0 - n.y * 0.6) * near - bump2 * mid);
+    vec3 view = vWorld - uCamPos;
+    float dist = length(view);
+    vec3 dir = view / dist;
+    float near = 1.0 - smoothstep(1500.0, 9000.0, dist);
+    float mid = 1.0 - smoothstep(6000.0, 22000.0, dist);
     float slope = 1.0 - n.y;
-    float big = fbm(vWorld.xz * 0.0011, 4) * 0.5 + 0.5;
-    float fine = fbm(vWorld.xz * 0.02, 3) * 0.5 + 0.5;
-    // Snow holds where it's flat enough; rock shows on steep faces and ridges.
+  #ifdef LITE
+    // The low tier (and software rendering): broad snow fields, no fine relief.
+    vec3 nd = n;
+    float big = tfbm(uNoise, CELLS, vWorld.xz * 0.0011, 2) * 0.5 + 0.5;
+    float fine = 0.5;
+    float crag = 0.7;
+    float strata = 0.5;
+  #else
+    // Relief at two scales — rock and drift close by, ribs and gullies
+    // further off — bumped with the noise's own gradient (metres of height).
+    vec4 rocky = tfbmd(uNoise, CELLS, vWorld * 0.014, n, 3);
+    vec4 ribs = tfbmd(uNoise, CELLS, vWorld * 0.0028, n, 3);
+    vec3 g = rocky.yzw * (0.014 * 34.0) * (1.0 - n.y * 0.6) * near + ribs.yzw * (0.0028 * 100.0) * mid;
+    vec3 nd = normalize(n - (g - n * dot(g, n)));
+    float big = tfbm(uNoise, CELLS, vWorld.xz * 0.0011, 3) * 0.5 + 0.5;
+    float fine = rocky.x * 0.5 + 0.5;
+    // Crags, and the strata of folded sedimentary rock on the faces.
+    float crag = 1.0 - abs(surface(vWorld * 0.05, n, 2));
+    float warp = tfbm(uNoise, CELLS, vWorld.xz * 0.003, 2);
+    float strata = tfbm(uNoise, CELLS, vec2(vWorld.y * 0.045 + warp * 1.5, (vWorld.x + vWorld.z) * 0.0005 + 3.7), 2) * 0.5 + 0.5;
+  #endif
+    // Snow holds where it's flat enough; rock shows on steep faces and
+    // ridges. The edge is crisp close by, softer far off.
     float hold = mix(0.26, 0.42, smoothstep(600.0, 3600.0, vWorld.y));
-    float snow = smoothstep(hold + 0.1, hold - 0.07, slope + (big - 0.5) * 0.28 + (fine - 0.5) * 0.12);
-    vec3 rock = mix(vec3(0.11, 0.105, 0.11), vec3(0.27, 0.25, 0.24), fine);
+    float edge = mix(0.11, 0.05, near);
+    float cover = slope + (big - 0.5) * 0.28 + (fine - 0.5) * 0.14;
+    float snow = smoothstep(hold + edge, hold - edge, cover);
+    vec3 rock = mix(vec3(0.1, 0.095, 0.1), vec3(0.28, 0.26, 0.25), fine);
     rock = mix(rock, vec3(0.42, 0.38, 0.34), smoothstep(0.6, 0.9, big) * 0.4);
+    // Banded, broken rock: lighter and darker layers, crags catching the light.
+    rock *= (0.88 + 0.24 * strata * mid) * (0.78 + 0.4 * crag * near + 0.2 * (1.0 - near));
     vec3 albedo = mix(rock, vec3(0.86, 0.89, 0.94), snow);
     float ndl = max(dot(nd, uSunDir), 0.0);
     float sun = ndl * vSun;
@@ -95,18 +121,17 @@ const terrainFragment = /* glsl */ `
     vec3 col = albedo * (uSunColor * sun * 2.3 + skyLight * 0.82);
     // Snow in shade glows blue from the sky; lit snow sparkles a little.
     col += snow * (1.0 - sun) * vec3(0.02, 0.05, 0.12) * vOcclusion;
-    vec3 view = vWorld - uCamPos;
-    float dist = length(view);
-    vec3 dir = view / dist;
     col += snow * sun * pow(max(dot(reflect(dir, nd), uSunDir), 0.0), 40.0) * 0.25;
     // Aerial perspective, plus mist pooled in the valley.
     float haze = 1.0 - exp(-dist * uHaze);
     float mist = exp(-max(0.0, vWorld.y - 80.0) * 0.004) * smoothstep(2500.0, 8000.0, dist) * uValleyMist;
+  #ifndef LITE
     // Wind-packed ripples and the odd stone in the near snow.
-    float ripple = fbm(vWorld.xz * vec2(0.09, 0.035), 3);
+    float ripple = tfbm(uNoise, CELLS, vWorld.xz * vec2(0.09, 0.035), 2);
     col *= 1.0 + ripple * 0.06 * snow * near;
-    float stones = smoothstep(0.76, 0.8, fbm(vWorld.xz * 0.018 + 9.0, 4) * 0.5 + 0.5) * snow * near * (1.0 - slope);
+    float stones = smoothstep(0.76, 0.8, tfbm(uNoise, CELLS, vWorld.xz * 0.018 + 9.0, 3) * 0.5 + 0.5) * snow * near * (1.0 - slope);
     col = mix(col, rock * (skyLight * 0.6 + uSunColor * sun), stones * 0.85);
+  #endif
     vec3 air = skyColor(normalize(vec3(dir.x, max(dir.y, 0.0) * 0.3, dir.z)));
     col = mix(col, air, clamp(haze + mist, 0.0, 1.0));
     gl_FragColor = vec4(col, 1.0);
@@ -124,8 +149,9 @@ const skyVertex = /* glsl */ `
   }
 `
 const skyFragment = /* glsl */ `
-  ${glslNoise}
+  ${glslNoiseTexture}
   ${atmosphere}
+  uniform sampler2D uNoise;
   uniform float uTime;
   varying vec3 vDir;
   void main() {
@@ -134,7 +160,11 @@ const skyFragment = /* glsl */ `
     // High, thin cloud.
     if (dir.y > 0.0) {
       vec2 p = dir.xz / (dir.y + 0.15) * 1.6 + vec2(uTime * 0.004, 0.0);
-      float c = smoothstep(0.1, 0.75, fbm(p, 5) * 0.5 + 0.5) * smoothstep(0.0, 0.25, dir.y);
+    #ifdef LITE
+      float c = smoothstep(0.1, 0.75, tfbm(uNoise, ${CELLS}.0, p, 2) * 0.5 + 0.5) * smoothstep(0.0, 0.25, dir.y);
+    #else
+      float c = smoothstep(0.1, 0.75, tfbm(uNoise, ${CELLS}.0, p, 5) * 0.5 + 0.5) * smoothstep(0.0, 0.25, dir.y);
+    #endif
       col = mix(col, vec3(1.0, 0.99, 0.97) * (0.92 + 0.15 * pow(max(dot(dir, uSunDir), 0.0), 6.0)), c * 0.55);
     }
     gl_FragColor = vec4(col, 1.0);
@@ -175,7 +205,7 @@ const snowFragment = /* glsl */ `
   }
 `
 
-export async function createLandscape(_renderer: THREE.WebGLRenderer, quality: Quality): Promise<Landscape> {
+export async function createLandscape(renderer: THREE.WebGLRenderer, quality: Quality): Promise<Landscape> {
   // The terrain is baked in a worker: heights, sunlight, occlusion, mesh.
   const baked = await new Promise<{ heights: Float32Array; res: number; mesh: HeightfieldMesh }>((resolve, reject) => {
     const worker = new Worker(new URL('./terrain.worker.ts', import.meta.url), { type: 'module' })
@@ -191,8 +221,24 @@ export async function createLandscape(_renderer: THREE.WebGLRenderer, quality: Q
   })
   const field = heightfield({ size: [SIZE, SIZE], resolution: baked.res, heights: baked.heights })
   const geometry = meshGeometry(baked.mesh)
+  // Draw the near rows first, so ridges in front hide what is behind them
+  // before it is shaded (the camera looks up the valley, toward −z).
+  const index = geometry.index!.array
+  const tris = index.length / 3
+  for (let a = 0, b = tris - 1; a < b; a++, b--) {
+    for (let k = 0; k < 3; k++) {
+      const t = index[a * 3 + k]!
+      index[a * 3 + k] = index[b * 3 + k]!
+      index[b * 3 + k] = t
+    }
+  }
 
+  // Rock, drift and cloud detail are read from a baked noise texture: a few
+  // texture reads per pixel instead of dozens of noise hashes.
+  const noise = noiseTexture({ size: 256, cells: CELLS, seed: 7 })
+  noise.anisotropy = Math.min(2, renderer.capabilities.getMaxAnisotropy())
   const common = {
+    uNoise: { value: noise },
     uSunDir: { value: SUN.clone() },
     uSunColor: { value: new THREE.Color('#fff1dc') },
     uZenith: { value: new THREE.Color('#2b5fa9') },
@@ -261,10 +307,26 @@ export async function createLandscape(_renderer: THREE.WebGLRenderer, quality: Q
   const forward = new THREE.Vector3()
   let drift = 0
 
+  // Switching variants recompiles both shaders once.
+  const skyMaterial = sky.material as THREE.ShaderMaterial
+  let lite: boolean | null = null
+  const setQuality = (q: Quality) => {
+    const next = q === 'low'
+    if (next === lite) return
+    lite = next
+    for (const m of [terrainMaterial, skyMaterial]) {
+      if (lite) m.defines.LITE = ''
+      else delete m.defines.LITE
+      m.needsUpdate = true
+    }
+  }
+  setQuality(quality)
+
   const self: Landscape = {
     scene,
     camera,
     progress: 0,
+    setQuality,
     update(dt, time, width, height, reduced) {
       const p = self.progress
       const t = p * p * (3 - 2 * p)
@@ -290,6 +352,7 @@ export async function createLandscape(_renderer: THREE.WebGLRenderer, quality: Q
     },
     dispose() {
       geometry.dispose()
+      noise.dispose()
       terrainMaterial.dispose()
       sky.geometry.dispose()
       ;(sky.material as THREE.Material).dispose()

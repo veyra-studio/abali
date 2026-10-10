@@ -13,7 +13,7 @@
 // Needs Chromium for Playwright (`npx playwright install chromium`). On
 // SwiftShader WebGL is slow: timings here are not performance data.
 import { spawn } from 'node:child_process'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, rmSync } from 'node:fs'
 import { chromium } from 'playwright'
 
 const PORT = 4173
@@ -22,6 +22,8 @@ const OUT = new URL('../verify-output/', import.meta.url).pathname
 const GPU = process.argv.includes('--gpu')
 const GL_ARGS = GPU ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']
 const SETTLE = GPU ? 1400 : 2600
+// Start clean, so every screenshot left here is from this run.
+rmSync(OUT, { recursive: true, force: true })
 mkdirSync(OUT, { recursive: true })
 
 // Run vite directly in its own process group so the whole tree is stopped
