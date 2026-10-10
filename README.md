@@ -70,7 +70,7 @@ scripts/                verify.mjs (browser checks), engine-stamp.mjs (writes di
 
 ## Accessibility and performance
 
-Real headings and text in the DOM (the canvas is decorative); skip link; every interaction has a keyboard path (shake button, open button); sound is off by default and both toggles report their state; reduced motion disables smoothing, entrances, pointer tilt, the word stretch and the drop animations; without WebGL, a drawn bottle, mountains and sofreh take over. The terrain is baked in a worker; the mountains and the table are built after the hero has loaded; the table re-renders its shadows only while dishes move; the adaptive quality governor lowers resolution on slow devices, and the low tier drops the floor reflection.
+Real headings and text in the DOM (the canvas is decorative); skip link; every interaction has a keyboard path (shake button, open button); sound is off by default and both toggles report their state; reduced motion disables smoothing, entrances, pointer tilt, the word stretch and the drop animations; without WebGL, a drawn bottle, mountains and sofreh take over. The terrain is baked in a worker; the mountains and the table are built after the hero has loaded; the table re-renders its shadows only while dishes move; the adaptive quality governor lowers resolution on slow devices, and every world follows its tier as it changes: the low tier drops the floor reflection, the bottle's transmission, the film grain and the blurs, and traces the ice more simply. Worlds built ahead of time are warmed up so reaching them doesn't stall a frame.
 
 ## Deploy
 
