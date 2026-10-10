@@ -9,11 +9,16 @@ const html = document.documentElement
 // The film starts at the top; don't let the browser restore a position
 // underneath the intro.
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual'
+// Captures and checks can pin a tier: `?capture&quality=low|medium|high`.
+const params = new URLSearchParams(location.search)
+const pinned = import.meta.env.DEV || params.has('capture') ? { low: 0.15, medium: 0.5, high: 0.85 }[params.get('quality') ?? ''] : undefined
 const stage = createStage({
   sound: { storageKey: 'abali:sound' },
-  quality: { dprRange: [1, 2] },
+  quality: { dprRange: [1, 2], ...(pinned === undefined ? {} : { initial: pinned, adaptive: false }) },
 })
 const sound = createSound(stage.sound)
+// The quality tier, for CSS: weak devices drop the blended grain and blurs.
+stage.quality?.tier.subscribe((t) => (document.documentElement.dataset.quality = t), { immediate: true })
 const reduced = stage.reducedMotion.value
 html.classList.toggle('reduced', reduced)
 stage.reducedMotion.subscribe((r) => html.classList.toggle('reduced', r))
@@ -104,7 +109,7 @@ if (experience) {
 // Debug handle for development and automated captures (`?capture`). Capture
 // mode also lifts the frame-delta clamp so animations keep real-time pace
 // in slow software-rendered browsers.
-if (import.meta.env.DEV || new URLSearchParams(location.search).has('capture')) {
+if (import.meta.env.DEV || params.has('capture')) {
   Object.assign(window, { __abali: { stage, experience } })
   if (!import.meta.env.DEV) stage.ticker.maxDelta = 0.5
 }
