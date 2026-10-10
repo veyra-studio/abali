@@ -89,7 +89,20 @@ export function createDooghGlass(quality: 'low' | 'medium' | 'high'): { group: T
   group.add(fizz)
 
   // Two ice cubes afloat, rounded by the cold doogh.
-  const iceMat = keep(new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.12, transmission: 0.92, thickness: 1.2, ior: 1.31, envMapIntensity: 1.2 }))
+  const iceMat = keep(
+    new THREE.MeshPhysicalMaterial({
+      color: '#ffffff',
+      roughness: 0.06,
+      transmission: 0.95,
+      thickness: 1.4,
+      ior: 1.31,
+      // Thick ice turns faintly blue-grey: it stands apart from the white doogh.
+      attenuationColor: new THREE.Color('#b9d3e6'),
+      attenuationDistance: 2.2,
+      specularIntensity: 1,
+      envMapIntensity: 1.4,
+    }),
+  )
   const iceGeo = keep(new THREE.BoxGeometry(1.9, 1.6, 1.9, 4, 4, 4))
   {
     // Melt the corners round.
@@ -151,11 +164,15 @@ export function createDooghGlass(quality: 'low' | 'medium' | 'high'): { group: T
   stripeTex.wrapS = THREE.RepeatWrapping
   stripeTex.wrapT = THREE.RepeatWrapping
   stripeTex.repeat.set(1, 4)
-  const strawLength = 19
-  const straw = new THREE.Mesh(keep(new THREE.CylinderGeometry(0.32, 0.32, strawLength, 20, 1, true)), keep(new THREE.MeshStandardMaterial({ map: stripeTex, roughness: 0.7, side: THREE.DoubleSide })))
-  // From the bottom of the glass, up past the rim toward the bottle.
-  const foot = new THREE.Vector3(0.8, base + 0.4, -0.6)
-  const dir = new THREE.Vector3(-0.55, 1, -0.35).normalize()
+  const strawLength = 20
+  const strawR = 0.32
+  const straw = new THREE.Mesh(keep(new THREE.CylinderGeometry(strawR, strawR, strawLength, 20, 1, true)), keep(new THREE.MeshStandardMaterial({ map: stripeTex, roughness: 0.7, side: THREE.DoubleSide })))
+  // As a straw sits in a glass: its foot on the bottom against one wall, the
+  // straw leaning on the rim opposite, the rest rising out past the rim.
+  const lean = new THREE.Vector3(-0.82, 0, -0.57).normalize()
+  const foot = lean.clone().multiplyScalar(-(r(base + 0.3) - strawR - 0.15)).setY(base + strawR)
+  const onRim = lean.clone().multiplyScalar(rTop - wall - strawR).setY(H + strawR * 0.8)
+  const dir = onRim.clone().sub(foot).normalize()
   straw.position.copy(foot).addScaledVector(dir, strawLength / 2)
   straw.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir)
   straw.castShadow = true
