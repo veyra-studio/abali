@@ -2,11 +2,13 @@
  * A tall glass of doogh, seen from above so it must read at a glance as a
  * drink, not a bowl: clear glass that shows the cloth through its walls, a
  * glossy surface with a ring of fine fizz at the edge, two floating ice
- * cubes, a sprig of fresh mint and a striped paper straw leaning on the rim.
+ * cubes (ray-traced, `createIceCube`), a sprig of fresh mint and a striped
+ * paper straw leaning on the rim.
  * Units: centimetres; the glass stands on y = 0.
  */
 import * as THREE from 'three'
 import { seededRandom } from '@veyra/core'
+import { createIceCube } from '../ice'
 
 export function createDooghGlass(quality: 'low' | 'medium' | 'high'): { group: THREE.Group; dispose(): void } {
   const group = new THREE.Group()
@@ -88,39 +90,33 @@ export function createDooghGlass(quality: 'low' | 'medium' | 'high'): { group: T
   }
   group.add(fizz)
 
-  // Two ice cubes afloat, rounded by the cold doogh.
-  const iceMat = keep(
-    new THREE.MeshPhysicalMaterial({
-      color: '#ffffff',
-      roughness: 0.06,
-      transmission: 0.95,
-      thickness: 1.4,
-      ior: 1.31,
-      // Thick ice turns faintly blue-grey: it stands apart from the white doogh.
-      attenuationColor: new THREE.Color('#b9d3e6'),
-      attenuationDistance: 2.2,
-      specularIntensity: 1,
-      envMapIntensity: 1.4,
-    }),
-  )
-  const iceGeo = keep(new THREE.BoxGeometry(1.9, 1.6, 1.9, 4, 4, 4))
-  {
-    // Melt the corners round.
-    const pos = iceGeo.attributes.position as THREE.BufferAttribute
-    const v = new THREE.Vector3()
-    for (let i = 0; i < pos.count; i++) {
-      v.fromBufferAttribute(pos, i)
-      const k = Math.max(Math.abs(v.x) / 0.95, Math.abs(v.y) / 0.8, Math.abs(v.z) / 0.95)
-      v.multiplyScalar(0.82 + 0.18 / Math.max(1, k * 1.05))
-      pos.setXYZ(i, v.x, v.y, v.z)
-    }
-    iceGeo.computeVertexNormals()
-  }
-  for (const [x, z, turn] of [[-1.1, 0.7, 0.4], [0.9, -0.9, 1.1]] as const) {
-    const cube = new THREE.Mesh(iceGeo, iceMat)
-    cube.position.set(x, level + 0.35, z)
-    cube.rotation.set(0.12, turn, -0.1)
-    group.add(cube)
+  // Two ice cubes afloat: the same ice as in the studio, here showing the
+  // white doogh through itself — below the surface, or wherever a ray
+  // heads down into it — and the room above.
+  const mist = new THREE.Color('#fbf8f2')
+  const dooghOutside = /* glsl */ `
+uniform float iceSurface; // how far below the cube's center the doogh's surface lies (its own units)
+uniform vec3 iceDoogh;
+vec3 solidOutside(vec3 p, vec3 d) {
+  float level = vSolidOrigin.y - iceSurface * length(vSolidBasis[1]);
+  if (p.y < level || d.y < 0.0) return iceDoogh;
+  return solidEnvironment(d, 0.0);
+}
+`
+  for (const [i, [x, z, turn]] of ([[-1.1, 0.7, 0.4], [0.9, -0.9, 1.1]] as const).entries()) {
+    const cube = createIceCube({
+      size: 1.9,
+      quality,
+      seed: 3.7 + i * 5.1,
+      cloud: 0.35,
+      mist,
+      outside: dooghOutside,
+      uniforms: { iceSurface: { value: 0.35 }, iceDoogh: { value: new THREE.Color('#e9e6de').multiplyScalar(0.92) } },
+    })
+    disposables.push(cube)
+    cube.mesh.position.set(x, level + 0.35, z)
+    cube.mesh.rotation.set(0.12, turn, -0.1)
+    group.add(cube.mesh)
   }
 
   // A sprig of fresh mint: a stem and four leaves.
