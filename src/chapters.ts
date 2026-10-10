@@ -75,6 +75,7 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
   // ------------------------------------------------------------------
   const heroSlot = $('.hero-slot')
   const finaleSlot = $('.finale-slot')
+  const finaleSection = $('#finale')
   for (const el of [heroSlot, finaleSlot]) stage.rects.track(el)
   const fromSlot = (el: Element, live: boolean): Place => {
     // The hero slot is read as if the page were at the top: the bottle stays
@@ -445,6 +446,7 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     }
 
     // ---- Studio state ----
+    exp.shift = 0
     const st = exp.studio.state
     st.visible = true
     st.turn = 0
@@ -463,7 +465,13 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     const wispRise = openFor >= 0 ? range(openFor, 0, 0.55) : 0
 
     if (finaleIn > 0) {
+      // Once the finale starts to leave, its picture scrolls with the page
+      // like a photograph: the bottle keeps its place in the scene and the
+      // view is lifted instead (no shift in perspective, no floor tipping past eye level).
+      const lift = Math.max(0, -stage.rects.view(finaleSection).top)
+      exp.shift = lift
       const place = fromSlot(finaleSlot, true)
+      place.baseY -= lift
       Object.assign(st, place, { floor: 1, ice: 1, idle: 1, pointer: 1 })
       st.baseY += r ? 0 : -(1 - easeOut(finaleIn)) * vh() * 0.25
       st.plume = wisp

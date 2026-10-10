@@ -23,6 +23,12 @@ export interface Experience {
   veil: Veil
   /** The world drawn this frame. */
   world: World
+  /**
+   * CSS px the studio's picture is lifted, as if it were printed on the page:
+   * a lens shift, so scrolling past the finale moves it without changing
+   * perspective (the floor never tips past eye level).
+   */
+  shift: number
   landscape: Landscape | null
   table: Table | null
   /** Builds the landscape and the table (lazy chunks). Safe to call repeatedly. */
@@ -54,6 +60,7 @@ export function createExperience(stage: Stage): Experience {
     studio,
     veil,
     world: 'studio',
+    shift: 0,
     landscape: null,
     table: null,
     prepare(which) {
@@ -96,6 +103,8 @@ export function createExperience(stage: Stage): Experience {
 
     renderer.autoClear = true
     if (world === 'studio') {
+      if (exp.shift !== 0) camera.setViewOffset(layer.width, layer.height, 0, exp.shift, layer.width, layer.height)
+      else if (camera.view?.enabled) camera.clearViewOffset()
       studio.update(dt, time, stage.pointer, reduced)
       studio.prepare(renderer, camera)
       renderer.render(scene, camera)
