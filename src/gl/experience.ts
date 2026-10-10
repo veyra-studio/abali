@@ -31,15 +31,19 @@ export interface Experience {
 }
 
 export function createExperience(stage: Stage): Experience {
+  const layer = stage.use(threeLayer({ fov: 15, zIndex: 1, maxDpr: 2, near: 2, autoRender: false, renderer: { antialias: stage.quality?.tier.value !== 'low' } }))
+  // Read the tier after the layer: on a software renderer it starts low.
   const tier: Quality = stage.quality?.tier.value ?? 'medium'
-  const layer = stage.use(threeLayer({ fov: 15, zIndex: 1, maxDpr: 2, near: 2, autoRender: false, renderer: { antialias: tier !== 'low' } }))
   const { renderer, scene, camera } = layer
   renderer.setClearColor(0x000000, 0)
   renderer.toneMapping = THREE.NeutralToneMapping
   renderer.toneMappingExposure = 1
   const transmission = (t: Quality) => (t === 'high' ? 1 : t === 'medium' ? 0.75 : 0.5)
   renderer.transmissionResolutionScale = transmission(tier)
-  stage.quality?.tier.subscribe((t) => (renderer.transmissionResolutionScale = transmission(t)))
+  stage.quality?.tier.subscribe((t) => {
+    renderer.transmissionResolutionScale = transmission(t)
+    exp.landscape?.setQuality(t)
+  })
 
   const studio = createStudio(renderer, scene, tier)
   const veil = createVeil()
@@ -58,7 +62,7 @@ export function createExperience(stage: Stage): Experience {
         p =
           which === 'landscape'
             ? import('./landscape').then(async ({ createLandscape }) => {
-                exp.landscape = await createLandscape(renderer, tier)
+                exp.landscape = await createLandscape(renderer, stage.quality?.tier.value ?? tier)
               })
             : import('./table').then(async ({ createTable }) => {
                 exp.table = await createTable(renderer, tier)

@@ -16,6 +16,8 @@ export interface Landscape {
   camera: THREE.PerspectiveCamera
   /** Scroll progress through the chapter 0…1. */
   progress: number
+  /** Follow the quality tier: the low tier draws a lean terrain without fine relief. */
+  setQuality(quality: Quality): void
   update(dt: number, time: number, width: number, height: number, reduced: boolean): void
   dispose(): void
 }
@@ -80,19 +82,28 @@ const terrainFragment = /* glsl */ `
     vec3 dir = view / dist;
     float near = 1.0 - smoothstep(1500.0, 9000.0, dist);
     float mid = 1.0 - smoothstep(6000.0, 22000.0, dist);
+    float slope = 1.0 - n.y;
+  #ifdef LITE
+    // The low tier (and software rendering): broad snow fields, no fine relief.
+    vec3 nd = n;
+    float big = tfbm(uNoise, CELLS, vWorld.xz * 0.0011, 2) * 0.5 + 0.5;
+    float fine = 0.5;
+    float crag = 0.7;
+    float strata = 0.5;
+  #else
     // Relief at two scales — rock and drift close by, ribs and gullies
     // further off — bumped with the noise's own gradient (metres of height).
     vec4 rocky = tfbmd(uNoise, CELLS, vWorld * 0.014, n, 3);
     vec4 ribs = tfbmd(uNoise, CELLS, vWorld * 0.0028, n, 3);
     vec3 g = rocky.yzw * (0.014 * 34.0) * (1.0 - n.y * 0.6) * near + ribs.yzw * (0.0028 * 100.0) * mid;
     vec3 nd = normalize(n - (g - n * dot(g, n)));
-    float slope = 1.0 - n.y;
     float big = tfbm(uNoise, CELLS, vWorld.xz * 0.0011, 3) * 0.5 + 0.5;
     float fine = rocky.x * 0.5 + 0.5;
     // Crags, and the strata of folded sedimentary rock on the faces.
     float crag = 1.0 - abs(surface(vWorld * 0.05, n, 2));
     float warp = tfbm(uNoise, CELLS, vWorld.xz * 0.003, 2);
     float strata = tfbm(uNoise, CELLS, vec2(vWorld.y * 0.045 + warp * 1.5, (vWorld.x + vWorld.z) * 0.0005 + 3.7), 2) * 0.5 + 0.5;
+  #endif
     // Snow holds where it's flat enough; rock shows on steep faces and
     // ridges. The edge is crisp close by, softer far off.
     float hold = mix(0.26, 0.42, smoothstep(600.0, 3600.0, vWorld.y));
@@ -114,11 +125,13 @@ const terrainFragment = /* glsl */ `
     // Aerial perspective, plus mist pooled in the valley.
     float haze = 1.0 - exp(-dist * uHaze);
     float mist = exp(-max(0.0, vWorld.y - 80.0) * 0.004) * smoothstep(2500.0, 8000.0, dist) * uValleyMist;
+  #ifndef LITE
     // Wind-packed ripples and the odd stone in the near snow.
     float ripple = tfbm(uNoise, CELLS, vWorld.xz * vec2(0.09, 0.035), 2);
     col *= 1.0 + ripple * 0.06 * snow * near;
     float stones = smoothstep(0.76, 0.8, tfbm(uNoise, CELLS, vWorld.xz * 0.018 + 9.0, 3) * 0.5 + 0.5) * snow * near * (1.0 - slope);
     col = mix(col, rock * (skyLight * 0.6 + uSunColor * sun), stones * 0.85);
+  #endif
     vec3 air = skyColor(normalize(vec3(dir.x, max(dir.y, 0.0) * 0.3, dir.z)));
     col = mix(col, air, clamp(haze + mist, 0.0, 1.0));
     gl_FragColor = vec4(col, 1.0);
@@ -147,7 +160,11 @@ const skyFragment = /* glsl */ `
     // High, thin cloud.
     if (dir.y > 0.0) {
       vec2 p = dir.xz / (dir.y + 0.15) * 1.6 + vec2(uTime * 0.004, 0.0);
+    #ifdef LITE
+      float c = smoothstep(0.1, 0.75, tfbm(uNoise, ${CELLS}.0, p, 2) * 0.5 + 0.5) * smoothstep(0.0, 0.25, dir.y);
+    #else
       float c = smoothstep(0.1, 0.75, tfbm(uNoise, ${CELLS}.0, p, 5) * 0.5 + 0.5) * smoothstep(0.0, 0.25, dir.y);
+    #endif
       col = mix(col, vec3(1.0, 0.99, 0.97) * (0.92 + 0.15 * pow(max(dot(dir, uSunDir), 0.0), 6.0)), c * 0.55);
     }
     gl_FragColor = vec4(col, 1.0);
@@ -290,10 +307,26 @@ export async function createLandscape(renderer: THREE.WebGLRenderer, quality: Qu
   const forward = new THREE.Vector3()
   let drift = 0
 
+  // Switching variants recompiles both shaders once.
+  const skyMaterial = sky.material as THREE.ShaderMaterial
+  let lite: boolean | null = null
+  const setQuality = (q: Quality) => {
+    const next = q === 'low'
+    if (next === lite) return
+    lite = next
+    for (const m of [terrainMaterial, skyMaterial]) {
+      if (lite) m.defines.LITE = ''
+      else delete m.defines.LITE
+      m.needsUpdate = true
+    }
+  }
+  setQuality(quality)
+
   const self: Landscape = {
     scene,
     camera,
     progress: 0,
+    setQuality,
     update(dt, time, width, height, reduced) {
       const p = self.progress
       const t = p * p * (3 - 2 * p)
