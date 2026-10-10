@@ -77,8 +77,17 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
 
   const disposers: Array<() => void> = []
   // The printed border frames the spread along the top and the left.
-  const cloth = createCloth(220, 150, quality)
-  cloth.mesh.position.set(-66 + 110, 0, -38 + 75)
+  // Where the dishes stand (x, z, radius), so the cloth lies flat under them.
+  const footprints: Array<[number, number, number]> = [
+    [-24, -3, 16.5],
+    [2, 6, 4.2],
+    [-47, -11, 4.6],
+    [-48, 13, 5.5],
+    [-22, 18.3, 4],
+    [-14, 21, 4],
+    [-6, 23.7, 4],
+  ]
+  const cloth = createCloth(220, 150, quality, [-66 + 110, -38 + 75], footprints)
   disposers.push(cloth.dispose)
   scene.add(cloth.mesh)
 
