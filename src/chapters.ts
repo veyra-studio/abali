@@ -230,6 +230,20 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
   const hookTable = () => {
     if (exp?.table && !exp.table.onLand) exp.table.onLand = (weight) => sound.thud(weight)
   }
+  // On narrow screens the menu card lies over the top of the table: the
+  // camera frames the spread below it (measured once per viewport size).
+  const card = $('.sofreh-copy')
+  let coverKey = ''
+  let cover = 0
+  const tableCover = () => {
+    const key = `${vw()}x${vh()}`
+    if (key !== coverKey) {
+      coverKey = key
+      const pin = card.offsetParent as HTMLElement | null
+      cover = pin && card.offsetTop < pin.clientHeight * 0.3 ? Math.min(0.6, (card.offsetTop + card.offsetHeight) / pin.clientHeight) : 0
+    }
+    return cover
+  }
 
   // ------------------------------------------------------------------
   // 05 — Finale: your turn
@@ -384,7 +398,10 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     exp.world = world
     // The camera starts up the valley while the mist is still lifting.
     if (exp.landscape) exp.landscape.progress = 0.2 * akhishIn + 0.8 * akhishP
-    if (exp.table) exp.table.progress = finaleIn > 0 ? 1 : sofrehP
+    if (exp.table) {
+      exp.table.progress = finaleIn > 0 ? 1 : sofrehP
+      if (world === 'table') exp.table.cover = tableCover()
+    }
 
     // ---- Studio state ----
     const st = exp.studio.state

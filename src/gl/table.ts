@@ -30,6 +30,8 @@ export interface Table {
   litMenu(p: number): number
   /** Called the moment a dish touches the cloth (its weight, 0.6…1.3). */
   onLand: ((weight: number) => void) | null
+  /** Fraction of the viewport's height that the copy covers from the top (portrait screens frame the spread below it). */
+  cover: number
   update(dt: number, time: number, width: number, height: number, reduced: boolean): void
   dispose(): void
 }
@@ -185,6 +187,7 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
     progress: 0,
     count: dishes.length,
     onLand: null,
+    cover: 0,
     landed: (p) => dishes.filter((d) => p >= d.at).length,
     litMenu(p) {
       let lit = 0
@@ -219,15 +222,16 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
         renderer.shadowMap.needsUpdate = true
         contact.update(renderer, scene)
       }
-      // Frame the spread: wide screens see it all; tall ones a narrower column.
+      // Frame the spread: wide screens see it all; tall ones a narrower column
+      // (x −50…4, z −41…26 cm), set below whatever copy covers the top.
       const aspect = width / height
       camera.aspect = aspect
       const portrait = aspect < 0.8
-      const span = portrait ? 50 : 66 // cm across the short side
       camera.fov = 28
-      const dist = span / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / Math.min(1, aspect)
+      const visible = portrait ? Math.max(50 / aspect, 70 / (1 - self.cover)) : 66 / Math.min(1, aspect) // cm, top to bottom
+      const dist = visible / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
       const drift = reduced ? 0 : Math.sin(time * 0.15) * 0.4
-      camera.position.set(portrait ? -22 : -8 + drift, Math.min(dist, 420), portrait ? 6 : -2)
+      camera.position.set(portrait ? -22 : -8 + drift, Math.min(dist, 420), portrait ? -7.5 - (self.cover / 2) * visible : -2)
       camera.lookAt(camera.position.x, 0, camera.position.z)
       camera.updateProjectionMatrix()
     },
