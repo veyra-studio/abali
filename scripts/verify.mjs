@@ -214,11 +214,17 @@ try {
   })
 
   await visit(browser, 'Interactions with sound on', { viewport: { width: 1280, height: 800 } }, async (page) => {
+    const pressedNow = () => page.evaluate(() => [...document.querySelectorAll('.sound-toggle, .sound-cta')].map((b) => b.getAttribute('aria-pressed')))
+    const initial = await pressedNow()
+    check(initial.every((p) => p === 'true'), `sound is on by default, both toggles agree (${initial})`)
+    // The first click starts the audio the browser held back; the hero's button turns sound off, and on again.
     await page.click('.sound-cta')
-    const pressed = await page.evaluate(() => [...document.querySelectorAll('.sound-toggle, .sound-cta')].map((b) => b.getAttribute('aria-pressed')))
-    check(pressed.every((p) => p === 'true'), `the hero's invitation turns sound on, both toggles agree (${pressed})`)
+    const off = await pressedNow()
+    await page.click('.sound-cta')
+    const on = await pressedNow()
+    check(off.every((p) => p === 'false') && on.every((p) => p === 'true'), `the hero's button turns sound off and on, both toggles agree (${off} → ${on})`)
     const audio = await page.evaluate(() => window.__abali?.stage.sound?.context?.state ?? 'none')
-    check(audio !== 'none', `audio context created (${audio})`)
+    check(audio === 'running', `audio plays after a click (${audio})`)
     // Taps: the glass rings; an ice cube clinks, cracks and, on the fifth tap, breaks into chips.
     // (After the hero's entrance has settled; the cube is found again before each tap.)
     await page.waitForTimeout(2500)
