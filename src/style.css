@@ -326,12 +326,14 @@ html.hud-over-footer .hud::before {
   background: currentColor;
   border-radius: 1px;
 }
-[aria-pressed='true'] > .sound-bars i {
+/* The bars move while sound actually plays: on, and started by the browser
+   (which waits for the first click, tap or key). */
+html.sound-live [aria-pressed='true'] > .sound-bars i {
   animation: bars 0.9s ease-in-out infinite alternate;
 }
-[aria-pressed='true'] > .sound-bars i:nth-child(2) { animation-delay: -0.3s; }
-[aria-pressed='true'] > .sound-bars i:nth-child(3) { animation-delay: -0.6s; }
-[aria-pressed='true'] > .sound-bars i:nth-child(4) { animation-delay: -0.15s; }
+html.sound-live [aria-pressed='true'] > .sound-bars i:nth-child(2) { animation-delay: -0.3s; }
+html.sound-live [aria-pressed='true'] > .sound-bars i:nth-child(3) { animation-delay: -0.6s; }
+html.sound-live [aria-pressed='true'] > .sound-bars i:nth-child(4) { animation-delay: -0.15s; }
 @keyframes bars {
   from { height: 3px; }
   to { height: 12px; }
@@ -1160,7 +1162,7 @@ html.no-webgl .shake {
 /* ------------------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
   .scroll-cue i::after,
-  [aria-pressed='true'] > .sound-bars i {
+  html.sound-live [aria-pressed='true'] > .sound-bars i {
     animation: none;
   }
   .punch {

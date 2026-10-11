@@ -12,13 +12,17 @@ if ('scrollRestoration' in history) history.scrollRestoration = 'manual'
 // Captures and checks can pin a tier: `?capture&quality=low|medium|high`.
 const params = new URLSearchParams(location.search)
 const pinned = import.meta.env.DEV || params.has('capture') ? { low: 0.15, medium: 0.5, high: 0.85 }[params.get('quality') ?? ''] : undefined
+// Sound is on unless the visitor turns it off (a new key: everyone starts
+// with it on); browsers let it start at the first click, tap or key.
 const stage = createStage({
-  sound: { storageKey: 'abali:sound' },
+  sound: { storageKey: 'abali:sound:on', defaultOn: true },
   quality: { dprRange: [1, 2], ...(pinned === undefined ? {} : { initial: pinned, adaptive: false }) },
 })
 const sound = createSound(stage.sound)
 // The quality tier, for CSS: weak devices drop the blended grain and blurs.
 stage.quality?.tier.subscribe((t) => (document.documentElement.dataset.quality = t), { immediate: true })
+// The sound bars move only while sound actually plays (on, and started by the browser).
+stage.onFrame(() => document.documentElement.classList.toggle('sound-live', stage.sound?.audible === true))
 const reduced = stage.reducedMotion.value
 html.classList.toggle('reduced', reduced)
 stage.reducedMotion.subscribe((r) => html.classList.toggle('reduced', r))
