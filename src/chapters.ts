@@ -343,7 +343,7 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
       } else snap()
     }
     exp.studio.onCapHit = (strength) => sound.capHit(strength)
-    exp.studio.onChipHit = (strength) => sound.ice('clink', 0.35 + strength * 0.5)
+    exp.studio.onChipHit = (strength) => sound.ice('tik', 0.4 + strength * 0.6)
   }
 
   // ------------------------------------------------------------------
