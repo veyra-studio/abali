@@ -153,6 +153,11 @@ main {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
   mix-blend-mode: overlay;
 }
+/* Over the bottle or the ice: they can be tapped. */
+html.can-tap,
+html.can-tap body {
+  cursor: pointer;
+}
 html[data-quality='low'] .grain {
   display: none;
 }
@@ -753,21 +758,8 @@ html[data-quality='low'] .place {
 .sofreh-fallback {
   display: none;
 }
-/* Window light: brighter where it comes in, falling off across the table. */
-.sofreh-chapter .pin::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background: radial-gradient(130% 110% at 14% 6%, transparent 42%, rgb(64 42 18 / 0.26) 100%);
-  mix-blend-mode: multiply;
-  /* Only over the table, never over the mist before it. */
-  opacity: var(--table-o, 0);
-}
-html[data-quality='low'] .sofreh-chapter .pin::before {
-  mix-blend-mode: normal;
-}
+/* (The window light falling off across the table is drawn with the table,
+   in WebGL: a layer here ended short of the screen's bottom on phones.) */
 
 /* ------------------------------------------------------------------ */
 /* 05 — Finale                                                         */

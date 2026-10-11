@@ -9,7 +9,7 @@ import { lerp, Spring } from '@veyra/core'
 import { ContactShadow, ReflectiveFloor, studioEnvironment } from '@veyra/core/three'
 import { BOTTLE, createBottle, type Bottle } from './bottle'
 import { createFoam, type Foam } from './foam'
-import { createIce, type Ice } from './ice'
+import { createIce, type Ice, type IceTap } from './ice'
 import { createOpener, OPENER_REST, type Opener } from './opener'
 import { createPlume, type Plume } from './plume'
 
@@ -68,12 +68,26 @@ export interface Studio {
   onPop: (() => void) | null
   /** Called when the cap hits the floor or rattles as it settles (strength 0…1). */
   onCapHit: ((strength: number) => void) | null
+  /** The ice around the bottle (taps, chips). */
+  ice: Ice
+  /**
+   * What a world-space ray meets first: the bottle (a column the size of its
+   * body) or a whole ice cube — or nothing.
+   */
+  pick(ray: THREE.Ray): { kind: 'bottle' } | { kind: 'ice'; index: number } | null
+  /** A tap on the glass: the bottle rocks a little away from the hand (`side` −1 left … 1 right). */
+  tapBottle(side: number): void
+  /** A tap on an ice cube: see `Ice.tap`. */
+  tapIce(index: number): IceTap | null
+  /** Called when a chip of broken ice lands (strength 0…1). */
+  onChipHit: ((strength: number) => void) | null
   update(dt: number, time: number, pointer: { snx: number; sny: number; vx: number; vy: number } | null, reduced: boolean): void
   /** Renders the reflection and contact shadow (call before rendering the scene). */
   prepare(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera): void
   /**
-   * Follows the quality tier: the low tier drops the floor's reflection,
-   * frosts the glass without transmission and traces the ice more simply.
+   * Follows the quality tier: the low tier reflects the floor at a lower
+   * resolution, frosts the glass without transmission and traces the ice
+   * more simply.
    */
   setQuality(quality: Quality): void
   dispose(): void
@@ -106,7 +120,8 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
   fill.position.set(900, 200, 600)
   scene.add(key, fill)
 
-  // Glossy floor (not on the low tier) and contact shadow. The floor
+  // Glossy floor and contact shadow, on every tier (the low one reflects at
+  // a lower resolution: the black acrylic is half of the picture). The floor
   // reflects the doogh, the label and the ice, but not the glass shell: its
   // transmission would draw the bottle's inside once more in the mirror,
   // for a rim the fading reflection barely shows.
@@ -119,15 +134,13 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
   }
   reflect()
   const setFloor = (q: Quality) => {
-    const resolution = q === 'high' ? 0.5 : q === 'medium' ? 0.35 : 0
+    const resolution = q === 'high' ? 0.5 : q === 'medium' ? 0.35 : 0.22
     if (resolution === floorResolution) return
     floorResolution = resolution
     if (floor) {
       scene.remove(floor.mesh)
       floor.dispose()
-      floor = null
     }
-    if (resolution === 0) return
     floor = new ReflectiveFloor({ width: 12000, depth: 12000, strength: 0.38, fade: [0, 0.28], blur: 4, layer: REFLECT, resolution })
     scene.add(floor.mesh)
   }
@@ -355,6 +368,35 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
     state,
     onPop: null,
     onCapHit: null,
+    onChipHit: null,
+    ice,
+    pick(ray) {
+      if (!state.visible) return null
+      const onIce = state.ice > 0.01 ? ice.pick(ray) : null
+      // The bottle as a column of its body's radius, in the product's frame.
+      const S = state.scale
+      const ox = (ray.origin.x - product.position.x) / S
+      const oy = (ray.origin.y - product.position.y) / S
+      const oz = (ray.origin.z - product.position.z) / S
+      const { x: dx, y: dy, z: dz } = ray.direction
+      const a = dx * dx + dz * dz
+      const b = ox * dx + oz * dz
+      const c = ox * ox + oz * oz - BOTTLE.radius * BOTTLE.radius
+      const disc = b * b - a * c
+      let onBottle = Infinity
+      if (a > 1e-9 && disc > 0) {
+        const t = (-b - Math.sqrt(disc)) / a
+        const y = oy + dy * t
+        if (t > 0 && y > 0 && y < BOTTLE.capTop) onBottle = t * S
+      }
+      if (onIce && onIce.distance < onBottle) return { kind: 'ice', index: onIce.index }
+      return onBottle < Infinity ? { kind: 'bottle' } : null
+    },
+    tapBottle(side) {
+      rockZ.velocity -= side * 0.9
+      kick.impulse(0.6)
+    },
+    tapIce: (index) => ice.tap(index),
     get openFor() {
       return openedAt < 0 ? -1 : clock - openedAt
     },
@@ -409,6 +451,7 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
       product.scale.setScalar(S)
       bottle.setScale(S)
       ice.place(product.position, S)
+      ice.update(dt, clock, (strength) => studio.onChipHit?.(strength))
 
       // Pointer tilt, idle turn, shake.
       const tiltAmount = reduced ? 0 : state.pointer
