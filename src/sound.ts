@@ -29,8 +29,8 @@ export interface AbaliSound {
   wind(level: number): void
   /** A knock on the full bottle: the glass rings briefly, damped by the doogh, `0…1`. */
   glass(strength?: number): void
-  /** Ice: a `clink`, a `crack` running through it, or the cube breaking (`shatter`), `0…1`. */
-  ice(kind: 'clink' | 'crack' | 'shatter', strength?: number): void
+  /** Ice: a `clink`, a `crack` running through it, the cube breaking (`shatter`), or a chip landing (`tik`), `0…1`. */
+  ice(kind: 'clink' | 'crack' | 'shatter' | 'tik', strength?: number): void
 }
 
 export function createSound(bus: SoundBus | null): AbaliSound {
@@ -39,6 +39,7 @@ export function createSound(bus: SoundBus | null): AbaliSound {
   let windGain: GainNode | null = null
   let fizzLevel = 0
   let crackleTimer: number | null = null
+  let lastTik = -1
 
   const ctx = () => (bus?.audible ? bus.context : null)
 
@@ -175,26 +176,53 @@ export function createSound(bus: SoundBus | null): AbaliSound {
       b.tone({ frequency: 300, to: 220, gain: 0.08 * strength, attack: 0.002, decay: 0.06 })
     },
     ice(kind, strength = 1) {
-      if (!ctx()) return
+      const c = ctx()
+      if (!c) return
       const b = bus!
-      const clink = (gain: number, delay = 0) => {
-        const f = 2600 + Math.random() * 1500
-        b.burst({ from: 7400, to: 5600, q: 7, gain: gain * 0.9, attack: 0.001, decay: 0.012, delay })
-        b.tone({ frequency: f, to: f * 0.985, type: 'triangle', gain: gain * 0.5, decay: 0.045, delay })
-        b.tone({ frequency: f * 1.52, gain: gain * 0.22, decay: 0.03, delay })
+      const s = strength
+      // A knock on ice: the click of the contact, then the cube's own ring —
+      // a few inharmonic modes, damped fast (ice rings far shorter than
+      // glass), pitched by its size.
+      const knock = (gain: number, pitch: number, delay = 0, ring = 1) => {
+        b.burst({ from: pitch * 1.6, q: 1.3, gain: gain * 0.9, attack: 0.0008, decay: 0.014, delay })
+        b.tone({ frequency: pitch, to: pitch * 0.992, gain: gain * 0.75, attack: 0.0012, decay: 0.07 * ring, delay })
+        b.tone({ frequency: pitch * 2.31, gain: gain * 0.38, attack: 0.001, decay: 0.04 * ring, delay })
+        b.tone({ frequency: pitch * 3.87, gain: gain * 0.18 * ring, attack: 0.001, decay: 0.022 * ring, delay })
       }
-      if (kind === 'clink') clink(0.09 * strength)
-      else if (kind === 'crack') {
-        // A fracture running through: a sharp snap and a splintered crackle.
-        b.burst({ filter: 'highpass', from: 6400, to: 2800, q: 0.9, gain: 0.2 * strength, attack: 0.001, decay: 0.05 })
-        b.tone({ frequency: 190, to: 95, gain: 0.08 * strength, decay: 0.045 })
-        for (let i = 0; i < 4; i++) clink(0.04 * strength, 0.012 + i * (0.012 + Math.random() * 0.02))
+      // A splinter: a tiny broadband click, as ice fractures in a drink.
+      const splinter = (gain: number, delay: number) => {
+        b.burst({ from: 1800 + Math.random() * 3200, q: 1.6, gain, attack: 0.0006, decay: 0.004 + Math.random() * 0.005, delay })
+      }
+      const pitch = 1700 + Math.random() * 450
+      if (kind === 'clink') {
+        knock(0.16 * s, pitch)
+        // Its weight knocking the acrylic.
+        b.tone({ frequency: 230, to: 150, gain: 0.07 * s, attack: 0.002, decay: 0.035 })
+      } else if (kind === 'tik') {
+        // A chip landing: small, high and quick (not two at once).
+        if (c.currentTime - lastTik < 0.016) return
+        lastTik = c.currentTime
+        knock(0.075 * s, 2300 + Math.random() * 1000, 0, 0.45)
+      } else if (kind === 'crack') {
+        // A fracture: a sharp snap, the crackle of it running through, the cube ringing.
+        b.burst({ from: 1300, q: 0.8, gain: 0.32 * s, attack: 0.0008, decay: 0.028 })
+        b.tone({ frequency: 180, to: 90, gain: 0.12 * s, attack: 0.001, decay: 0.045 })
+        knock(0.08 * s, pitch * 0.92, 0.004)
+        let t = 0.012
+        for (let i = 0; i < 12; i++) {
+          splinter((0.13 - i * 0.008) * s, t)
+          t += 0.004 + Math.random() * 0.016
+        }
       } else {
-        // Breaking: a crunch, then the pieces clinking down and a whisper of ice dust.
-        b.burst({ from: 3200, to: 1100, q: 1.1, gain: 0.26 * strength, attack: 0.002, decay: 0.16 })
-        b.tone({ frequency: 150, to: 70, gain: 0.12 * strength, decay: 0.08 })
-        for (let i = 0; i < 7; i++) clink((0.07 - i * 0.007) * strength, 0.03 + i * (0.035 + Math.random() * 0.03))
-        b.burst({ filter: 'highpass', from: 8200, to: 5200, q: 0.7, gain: 0.05 * strength, attack: 0.02, decay: 0.45, delay: 0.05 })
+        // Breaking: a crunch and a burst of splinters; the chips' own landings follow ('tik').
+        b.burst({ from: 1700, to: 900, q: 0.75, gain: 0.36 * s, attack: 0.001, decay: 0.09 })
+        b.tone({ frequency: 150, to: 70, gain: 0.14 * s, decay: 0.07 })
+        knock(0.07 * s, pitch * 0.85, 0.003)
+        let t = 0.006
+        for (let i = 0; i < 16; i++) {
+          splinter((0.12 - i * 0.005) * s, t)
+          t += 0.003 + Math.random() * 0.01
+        }
       }
     },
   }

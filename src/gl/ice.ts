@@ -450,6 +450,12 @@ export function createIce(options: { quality: Quality }): Ice {
     vel: THREE.Vector3
     spin: THREE.Vector3
     resting: boolean
+    /** Times it has struck the floor (each one sounds). */
+    hits: number
+    /** Seconds since it broke off. */
+    age: number
+    /** How high it has risen above the floor since it last touched it. */
+    peak: number
   }
   const chips: Chip[] = []
   interface Dust {
@@ -490,6 +496,9 @@ export function createIce(options: { quality: Quality }): Ice {
         vel: out.multiplyScalar(0.45 + rand() * 0.6).setY(0.35 + rand() * 0.55),
         spin: new THREE.Vector3(rand() - 0.5, rand() - 0.5, rand() - 0.5).multiplyScalar(26),
         resting: false,
+        hits: 0,
+        age: 0,
+        peak: 1,
       })
     }
     const n = 90
@@ -608,11 +617,20 @@ export function createIce(options: { quality: Quality }): Ice {
         const e = m.matrix.elements
         const h = chip.cube.half
         const reach = Math.abs(e[1]!) * h.x + Math.abs(e[5]!) * h.y + Math.abs(e[9]!) * h.z
+        chip.peak = Math.max(chip.peak, m.position.y - reach)
+        chip.age += dt
         if (m.position.y < reach) {
           m.position.y = reach
           const impact = -chip.vel.y
-          if (impact > 0.18) {
-            onHit?.(Math.min(1, impact / 2))
+          // A real bounce only — the chip came down from a height. Lying on
+          // the floor, one frame of gravity pulls it into the floor again and
+          // again; counting that as a bounce made it clink every frame, a
+          // continuous sound. Two or three strikes, then it lies still.
+          const bounce = chip.peak > 0.0015 && impact > 0.4 && chip.hits < 3 && chip.age < 1.5
+          chip.peak = 0
+          if (bounce) {
+            chip.hits++
+            onHit?.(Math.min(1, impact / 2.5))
             chip.vel.y = impact * 0.3
             chip.vel.x *= 0.55
             chip.vel.z *= 0.55
