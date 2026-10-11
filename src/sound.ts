@@ -27,6 +27,10 @@ export interface AbaliSound {
   fizz(level: number): void
   /** Mountain wind, `0…1`. */
   wind(level: number): void
+  /** A knock on the full bottle: the glass rings briefly, damped by the doogh, `0…1`. */
+  glass(strength?: number): void
+  /** Ice: a `clink`, a `crack` running through it, or the cube breaking (`shatter`), `0…1`. */
+  ice(kind: 'clink' | 'crack' | 'shatter', strength?: number): void
 }
 
 export function createSound(bus: SoundBus | null): AbaliSound {
@@ -157,6 +161,41 @@ export function createSound(bus: SoundBus | null): AbaliSound {
         }
       }
       windGain?.gain.setTargetAtTime(level * 0.2, c.currentTime, 0.5)
+    },
+    glass(strength = 1) {
+      if (!ctx()) return
+      const b = bus!
+      // A fingertip on thick glass: the tap, a short ring (a full bottle
+      // doesn't sing for long) and the dull knock of the doogh inside.
+      const f = 1380 + Math.random() * 160
+      b.burst({ from: 5600, to: 4400, q: 6, gain: 0.09 * strength, attack: 0.001, decay: 0.018 })
+      b.tone({ frequency: f, to: f * 0.998, gain: 0.07 * strength, attack: 0.001, decay: 0.2 })
+      b.tone({ frequency: f * 2.64, type: 'triangle', gain: 0.028 * strength, decay: 0.09 })
+      b.tone({ frequency: f * 4.18, gain: 0.014 * strength, decay: 0.05 })
+      b.tone({ frequency: 300, to: 220, gain: 0.08 * strength, attack: 0.002, decay: 0.06 })
+    },
+    ice(kind, strength = 1) {
+      if (!ctx()) return
+      const b = bus!
+      const clink = (gain: number, delay = 0) => {
+        const f = 2600 + Math.random() * 1500
+        b.burst({ from: 7400, to: 5600, q: 7, gain: gain * 0.9, attack: 0.001, decay: 0.012, delay })
+        b.tone({ frequency: f, to: f * 0.985, type: 'triangle', gain: gain * 0.5, decay: 0.045, delay })
+        b.tone({ frequency: f * 1.52, gain: gain * 0.22, decay: 0.03, delay })
+      }
+      if (kind === 'clink') clink(0.09 * strength)
+      else if (kind === 'crack') {
+        // A fracture running through: a sharp snap and a splintered crackle.
+        b.burst({ filter: 'highpass', from: 6400, to: 2800, q: 0.9, gain: 0.2 * strength, attack: 0.001, decay: 0.05 })
+        b.tone({ frequency: 190, to: 95, gain: 0.08 * strength, decay: 0.045 })
+        for (let i = 0; i < 4; i++) clink(0.04 * strength, 0.012 + i * (0.012 + Math.random() * 0.02))
+      } else {
+        // Breaking: a crunch, then the pieces clinking down and a whisper of ice dust.
+        b.burst({ from: 3200, to: 1100, q: 1.1, gain: 0.26 * strength, attack: 0.002, decay: 0.16 })
+        b.tone({ frequency: 150, to: 70, gain: 0.12 * strength, decay: 0.08 })
+        for (let i = 0; i < 7; i++) clink((0.07 - i * 0.007) * strength, 0.03 + i * (0.035 + Math.random() * 0.03))
+        b.burst({ filter: 'highpass', from: 8200, to: 5200, q: 0.7, gain: 0.05 * strength, attack: 0.02, decay: 0.45, delay: 0.05 })
+      }
     },
   }
 }

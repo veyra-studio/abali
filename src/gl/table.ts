@@ -9,7 +9,7 @@ import * as THREE from 'three'
 import { ContactShadow, studioEnvironment, studioLights } from '@veyra/core/three'
 import { BOTTLE, createBottle } from './bottle'
 import { createCloth } from './food/cloth'
-import { createFork, createSpoon } from './food/cutlery'
+import { createFork, createSpoon, steelEnvironment } from './food/cutlery'
 import { createDooghGlass } from './food/glass'
 import { createKebab } from './food/kebab'
 import { createPlate } from './food/plate'
@@ -50,6 +50,8 @@ interface Dish {
   menu: number
   rest: THREE.Vector3
   restRot: THREE.Euler
+  /** Where it is judged from when choosing the side it comes in from (food on the plate comes with the plate). */
+  anchor: THREE.Vector2
 }
 
 export async function createTable(renderer: THREE.WebGLRenderer, quality: Quality): Promise<Table> {
@@ -96,7 +98,7 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
   scene.add(cloth.mesh)
 
   const dishes: Dish[] = []
-  const add = (object: THREE.Object3D, x: number, z: number, rotY: number, at: number, menu: number, y = 0) => {
+  const add = (object: THREE.Object3D, x: number, z: number, rotY: number, at: number, menu: number, y = 0, anchor = new THREE.Vector2(x, z)) => {
     object.traverse((o) => {
       if (o instanceof THREE.Mesh) {
         o.castShadow = true
@@ -106,7 +108,7 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
     object.position.set(x, y, z)
     object.rotation.y = rotY
     scene.add(object)
-    dishes.push({ object, at, menu, clock: 0, weight: menu === -1 ? 1.3 : menu === 0 ? 1 : 0.7, rest: object.position.clone(), restRot: object.rotation.clone() })
+    dishes.push({ object, at, menu, clock: 0, weight: menu === -1 ? 1.3 : menu === 0 ? 1 : 0.7, rest: object.position.clone(), restRot: object.rotation.clone(), anchor })
   }
 
   // Chelow kabab: the plate, rice, two skewers' worth of koobideh, tomatoes.
@@ -135,7 +137,7 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
     const g = new THREE.Group()
     g.add(kebab.mesh)
     disposers.push(kebab.dispose)
-    add(g, PLATE.x + k.x, PLATE.y + k.z, rotY, 0.2 + i * 0.06, 1, plate.well)
+    add(g, PLATE.x + k.x, PLATE.y + k.z, rotY, 0.2 + i * 0.06, 1, plate.well, PLATE)
   })
   // One beyond the rice at the top, one tucked between the rice and a kebab.
   const grilled = [
@@ -147,13 +149,15 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
     const g = new THREE.Group()
     g.add(tomato.mesh)
     disposers.push(tomato.dispose)
-    add(g, PLATE.x + t.x, PLATE.y + t.z, i * 1.3, 0.33 + i * 0.05, 2, plate.well - 0.08)
+    add(g, PLATE.x + t.x, PLATE.y + t.z, i * 1.3, 0.33 + i * 0.05, 2, plate.well - 0.08, PLATE)
   })
 
-  // A spoon and a fork, set down just after the plate.
-  const spoon = createSpoon()
-  const fork = createFork()
-  disposers.push(spoon.dispose, fork.dispose)
+  // A spoon and a fork, set down just after the plate: polished steel,
+  // reflecting a room of its own.
+  const steelEnv = steelEnvironment(renderer)
+  const spoon = createSpoon(steelEnv)
+  const fork = createFork(steelEnv)
+  disposers.push(spoon.dispose, fork.dispose, () => steelEnv.dispose())
   const cutlery = new THREE.Group()
   spoon.group.position.set(0, 0, -1.6)
   fork.group.position.set(0.6, 0, 1.6)
@@ -203,10 +207,44 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
   const camera = new THREE.PerspectiveCamera(30, 1, 10, 800)
   camera.up.set(0, 0, -1)
 
-  // Each dish is set down by hand in about half a second once the scroll
-  // reaches it, and lifted away again if the scroll goes back.
-  const DOWN = 0.55
-  const UP = 0.35
+  // Window light: the table brighter toward the window (top left), falling
+  // off across it — multiplied over the whole frame here in the render, so
+  // it reaches every edge however a phone's toolbar moves.
+  const drawing = new THREE.Vector2(1, 1)
+  const windowLight = new THREE.Mesh(
+    new THREE.PlaneGeometry(2, 2),
+    new THREE.ShaderMaterial({
+      uniforms: { uRes: { value: drawing } },
+      vertexShader: /* glsl */ `void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+      fragmentShader: /* glsl */ `
+        uniform vec2 uRes;
+        void main() {
+          vec2 p = (vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y) - vec2(0.14, 0.06) * uRes) / max(uRes.x, uRes.y);
+          float a = smoothstep(0.35, 1.1, length(p)) * 0.26;
+          gl_FragColor = vec4(mix(vec3(1.0), vec3(0.251, 0.165, 0.071), a), 1.0);
+        }`,
+      blending: THREE.MultiplyBlending,
+      premultipliedAlpha: true,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    }),
+  )
+  windowLight.frustumCulled = false
+  windowLight.renderOrder = 100
+  scene.add(windowLight)
+  disposers.push(() => {
+    windowLight.geometry.dispose()
+    ;(windowLight.material as THREE.Material).dispose()
+  })
+
+  // Each dish is brought in by hand from the nearest side of the frame and
+  // set down, in under a second once the scroll reaches it, and taken away
+  // the same way if the scroll goes back. (Lowered from above, as before,
+  // a dish seen from straight overhead only grew and popped into view.)
+  const DOWN = 0.75
+  const UP = 0.5
+  const frame = { left: -60, right: 20, bottom: 40 }
   let settleFrames = 3
   const setQuality = (q: Quality) => {
     const size = shadowSize(q)
@@ -214,6 +252,32 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
     // three.js resizes the map on the next shadow render.
     sun.shadow.mapSize.setScalar(size)
     renderer.shadowMap.needsUpdate = true
+  }
+  // Frame the spread: wide screens see it all; tall ones a narrower column
+  // (x −51…9, z −41…31 cm: the glass, the spoon and fork and the bottle
+  // included), set below whatever copy covers the top.
+  const frameSpread = (width: number, height: number, reduced: boolean, time: number) => {
+    const aspect = width / height
+    camera.aspect = aspect
+    const portrait = aspect < 0.8
+    camera.fov = 28
+    // When copy covers the top (narrow layouts), the spread fits below it,
+    // centered; otherwise wide screens keep it left of the card.
+    const covered = self.cover > 0
+    const fit = covered ? 74 / (1 - self.cover) : 0
+    const visible = Math.max(portrait ? 61 / aspect : 66 / Math.min(1, aspect), fit) // cm, top to bottom
+    const dist = visible / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
+    const drift = reduced ? 0 : Math.sin(time * 0.15) * 0.4
+    const x = portrait ? -21 : (covered ? -20 : -8) + drift
+    const z = covered ? -5 - (self.cover / 2) * visible : portrait ? -5 : -2
+    camera.position.set(x, Math.min(dist, 420), z)
+    camera.lookAt(camera.position.x, 0, camera.position.z)
+    camera.updateProjectionMatrix()
+    // The frame's sides on the cloth, for the dishes' way in.
+    const across = (visible * aspect) / 2
+    frame.left = x - across
+    frame.right = x + across
+    frame.bottom = z + visible / 2
   }
   const self: Table = {
     setQuality,
@@ -230,6 +294,8 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
       return lit
     },
     update(dt, time, width, height, reduced) {
+      frameSpread(width, height, reduced, time)
+      renderer.getDrawingBufferSize(drawing)
       const p = self.progress
       let moving = false
       for (const d of dishes) {
@@ -243,11 +309,19 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
         const o = d.object
         o.visible = t > 0
         if (!o.visible) continue
-        // Lowered fast, slowing just before contact; a last soft settle.
+        // From just beyond the nearest side (left, right or the diner's),
+        // carried a hand's breadth up, slowing as it arrives; a soft settle.
+        const margin = 22
+        const toLeft = d.anchor.x - frame.left
+        const toRight = frame.right - d.anchor.x
+        const toBottom = frame.bottom - d.anchor.y
+        const nearest = Math.min(toLeft, toRight, toBottom)
+        const fromX = nearest === toLeft ? frame.left - margin - (d.anchor.x - frame.left) + (d.rest.x - frame.left) : nearest === toRight ? frame.right + margin + (d.rest.x - d.anchor.x) : d.rest.x
+        const fromZ = nearest === toBottom ? frame.bottom + margin + (d.rest.z - d.anchor.y) : d.rest.z
         const e = 1 - (1 - t) ** 3
-        const settle = t > 0.88 ? Math.sin(((t - 0.88) / 0.12) * Math.PI) * 0.18 : 0
-        o.position.set(d.rest.x, d.rest.y + (1 - e) * 24 + settle, d.rest.z + (1 - e) * -3)
-        o.rotation.set(d.restRot.x + (1 - e) * 0.16, d.restRot.y + (1 - e) * -0.22, d.restRot.z + (1 - e) * 0.05)
+        const settle = t > 0.9 ? Math.sin(((t - 0.9) / 0.1) * Math.PI) * 0.15 : 0
+        o.position.set(THREE.MathUtils.lerp(fromX, d.rest.x, e), d.rest.y + (1 - e) * 7 + settle, THREE.MathUtils.lerp(fromZ, d.rest.z, e))
+        o.rotation.set(d.restRot.x + (1 - e) * 0.1, d.restRot.y + (1 - e) * -0.25, d.restRot.z + (1 - e) * 0.04)
       }
       // Re-render shadows while dishes move, and for a few frames after.
       if (moving) settleFrames = 3
@@ -257,24 +331,6 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
         renderer.shadowMap.needsUpdate = true
         contact.update(renderer, scene)
       }
-      // Frame the spread: wide screens see it all; tall ones a narrower column
-      // (x −50…4, z −41…26 cm), set below whatever copy covers the top.
-      const aspect = width / height
-      camera.aspect = aspect
-      const portrait = aspect < 0.8
-      camera.fov = 28
-      // When copy covers the top (narrow layouts), the spread fits below it,
-      // centered; otherwise wide screens keep it left of the card.
-      const covered = self.cover > 0
-      const fit = covered ? 70 / (1 - self.cover) : 0
-      const visible = Math.max(portrait ? 56 / aspect : 66 / Math.min(1, aspect), fit) // cm, top to bottom
-      const dist = visible / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
-      const drift = reduced ? 0 : Math.sin(time * 0.15) * 0.4
-      const x = portrait ? -21 : (covered ? -20 : -8) + drift
-      const z = covered ? -7.5 - (self.cover / 2) * visible : portrait ? -7.5 : -2
-      camera.position.set(x, Math.min(dist, 420), z)
-      camera.lookAt(camera.position.x, 0, camera.position.z)
-      camera.updateProjectionMatrix()
     },
     dispose() {
       for (const d of disposers) d()

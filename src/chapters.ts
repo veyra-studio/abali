@@ -210,6 +210,13 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
   let pisActive = false
   let pressure = 0
   let burst = -1 // seconds since the bottle boiled over, or -1
+  // Boiled over: the foam fills the screen and carries the reader on to
+  // «آخیش» (held while that scroll runs; it recedes if the reader stops it).
+  let burstHold = false
+  let burstFlood = 0
+  // Shaking is back and forth: the last fast swing's direction on each axis.
+  let swingX = 0
+  let swingY = 0
   let hintLevel = -1
   const hints = ['تکانش ندهید.', 'گفتیم تکانش ندهید!', 'دارد سر می‌رود!', 'دیدید؟ سر رفت.']
   const setHint = (level: number) => {
@@ -336,7 +343,33 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
       } else snap()
     }
     exp.studio.onCapHit = (strength) => sound.capHit(strength)
+    exp.studio.onChipHit = (strength) => sound.ice('clink', 0.35 + strength * 0.5)
   }
+
+  // ------------------------------------------------------------------
+  // Taps: the glass rings, the ice clinks — tap a cube again and again and
+  // it cracks, then breaks into chips and dust. Links, buttons and the HUD
+  // keep their clicks.
+  // ------------------------------------------------------------------
+  const interactive = 'a, button, input, select, textarea, label, [role="button"], .hud'
+  if (exp) {
+    document.addEventListener('click', (e) => {
+      if (e.target instanceof Element && e.target.closest(interactive)) return
+      const hit = exp.pick(e.clientX, e.clientY)
+      if (!hit) return
+      if (hit.kind === 'bottle') {
+        exp.studio.tapBottle(e.clientX < innerWidth / 2 ? -1 : 1)
+        sound.glass()
+      } else {
+        const what = exp.studio.tapIce(hit.index)
+        if (what) sound.ice(what)
+      }
+    })
+  }
+  // A mouse over something to tap shows it.
+  const finePointer = window.matchMedia('(pointer: fine)')
+  let lastPointer = ''
+  let canTap = false
 
   // ------------------------------------------------------------------
   // Per-frame orchestration: worlds, studio state, veil, theme, sound
@@ -354,6 +387,14 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     const r = reduced()
     hookTable()
     hookStudio()
+    if (exp && finePointer.matches && stage.pointer) {
+      const key = `${Math.round(stage.pointer.x)},${Math.round(stage.pointer.y)},${exp.world},${Math.round(stage.scrollY)}`
+      if (key !== lastPointer) {
+        lastPointer = key
+        const over = stage.pointer.inside && exp.pick(stage.pointer.x, stage.pointer.y) !== null
+        if (over !== canTap) html.classList.toggle('can-tap', (canTap = over))
+      }
+    }
 
     // «تق!» slams in when the cap comes off, and leaves if it goes back on.
     taqShow.target = snapped ? 1 : 0
@@ -374,28 +415,49 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
       })
     }
 
-    // Shake: the hand's speed builds pressure while the chapter is on screen.
-    if (pisActive && pisP > 0.08 && pisP < 0.66 && burst < 0) {
-      const speed = stage.pointer?.speed ?? 0
-      pressure += Math.min(0.05, Math.max(0, speed - 250) * 0.00022 * dt * 60)
+    // Shake: only back and forth builds pressure — each fast swing that
+    // reverses the last one adds a little (more for a hard one); a sweep or
+    // a nudge adds nothing. Vigorous shaking boils it over in about five seconds.
+    if (pisActive && pisP > 0.08 && pisP < 0.66 && burst < 0 && stage.pointer) {
+      const swing = (v: number, last: number) => {
+        if (Math.abs(v) < 380) return last
+        const dir = Math.sign(v)
+        if (last !== 0 && dir !== last) pressure += 0.045 + 0.035 * clamp((Math.abs(v) - 380) / 1800)
+        return dir
+      }
+      swingX = swing(stage.pointer.vx, swingX)
+      swingY = swing(stage.pointer.vy, swingY)
     }
-    pressure = clamp(pressure - dt * 0.12, 0, 1)
+    pressure = clamp(pressure - dt * 0.06, 0, 1)
     if (pressure >= 1 && burst < 0) {
       burst = 0
+      burstHold = true
       setHint(3)
       sound.hiss(1)
       sound.taq()
+      // Let the foam rise over the screen, then carry on to the mountains.
+      window.setTimeout(
+        () =>
+          void stage.scroll?.scrollTo(akhishSection, { duration: r ? 0 : 2.6, ease: 'drift' }).then(() => {
+            // Stopped on the way (the reader scrolled): the foam goes back down.
+            if (Math.abs(stage.rects.view(akhishSection).top) > 40) burstHold = false
+          }),
+        r ? 0 : 550,
+      )
     }
     if (burst >= 0) {
       burst += dt
       pressure = Math.max(0, pressure - dt * 0.9)
-      if (burst > 3.2) {
+      // Arrived (the scroll's own flood has taken over), or gone back down.
+      if (akhishIn > 0.6 || (!burstHold && burstFlood <= 0)) {
         burst = -1
+        burstHold = false
         setHint(0)
       }
     } else {
       setHint(pressure > 0.7 ? 2 : pressure > 0.3 ? 1 : 0)
     }
+    burstFlood = clamp(burstFlood + (burst >= 0 && burstHold ? dt / 0.7 : -dt / 1.4))
     put(gauge, '--pressure', pressure.toFixed(3))
     const percent = Math.round(pressure * 100)
     if (percent !== gaugePercent) {
@@ -405,9 +467,8 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     }
 
     // The bottle boils over: by shaking, or by scrolling on.
-    const burstFlood = burst >= 0 ? (burst < 0.7 ? easeOut(burst / 0.7) : 1 - smooth(range(burst, 1.6, 3.0))) : 0
     const scrollFlood = smooth(range(pisP, 0.62, 1))
-    const flood = Math.max(burstFlood, scrollFlood)
+    const flood = Math.max(easeOut(burstFlood), scrollFlood)
     put(pisSection, '--shake-o', (range(pisP, 0.06, 0.14) * (1 - range(flood, 0.2, 0.45))).toFixed(3))
     put(pisSection, '--copy-o', (1 - range(flood, 0.55, 0.85)).toFixed(3))
 
@@ -460,7 +521,6 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
       themeNow = flood > 0.55 ? 'snow' : 'studio'
     }
     setTheme(themeNow)
-    put(sofrehSection, '--table-o', (world === 'table' ? 1 - mist : 0).toFixed(3))
     // «آخیش» is navy while the mist is thick and turns white over the clear valley.
     put(akhishSection, '--clear', (exp && world === 'landscape' ? smooth(range(mist, 0.55, 0.25)) : 0).toFixed(3))
     if (!exp) return

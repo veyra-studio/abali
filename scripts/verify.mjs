@@ -219,6 +219,25 @@ try {
     check(pressed.every((p) => p === 'true'), `the hero's invitation turns sound on, both toggles agree (${pressed})`)
     const audio = await page.evaluate(() => window.__abali?.stage.sound?.context?.state ?? 'none')
     check(audio !== 'none', `audio context created (${audio})`)
+    // Taps: the glass rings; an ice cube clinks, cracks and, on the fifth tap, breaks into chips.
+    // (After the hero's entrance has settled; the cube is found again before each tap.)
+    await page.waitForTimeout(2500)
+    const cube = () =>
+      page.evaluate(() => {
+        const exp = window.__abali.experience
+        const mesh = exp.studio.ice.group.children.filter((o) => o.isMesh)[1]
+        const v = mesh.getWorldPosition(new mesh.position.constructor()).project(exp.layer.camera)
+        return { x: ((v.x + 1) / 2) * innerWidth, y: ((1 - v.y) / 2) * innerHeight, pieces: exp.studio.ice.group.children.filter((o) => o.isMesh && o.visible).length }
+      })
+    const cubeAt = await cube()
+    for (let k = 0; k < 5; k++) {
+      const at = await cube()
+      await page.mouse.click(at.x, at.y)
+      await page.waitForTimeout(250)
+    }
+    await page.waitForTimeout(1500)
+    const pieces = await page.evaluate(() => window.__abali.experience.studio.ice.group.children.filter((o) => o.isMesh && o.visible).length)
+    check(pieces > cubeAt.pieces, `five taps break an ice cube into chips (${cubeAt.pieces} → ${pieces} pieces of ice)`)
     // Shake: fast pointer movement inside «پیس» builds pressure until it boils over.
     await scrollToScene(page, '#pis', 0.55)
     await page.waitForTimeout(1500)
@@ -233,9 +252,15 @@ try {
       outOfRange ||= v < 0 || v > 100
       burst ||= ((await page.textContent('.shake-hint')) ?? '').includes('سر رفت')
     }
-    await page.click('.shake-btn')
     check(!outOfRange && (max > 0 || burst), `shaking builds pressure (peak ${max}%${burst ? ', boiled over' : ''})`)
-    if (burst) await page.screenshot({ path: `${OUT}interaction-boiled-over.png` })
+    if (burst) {
+      await page.screenshot({ path: `${OUT}interaction-boiled-over.png` })
+      // Boiled over: the foam carries the reader on to «آخیش».
+      await page.waitForFunction(() => Math.abs(document.querySelector('#akhish').getBoundingClientRect().top) < 80, null, { timeout: 20000 }).catch(() => {})
+      const top = await page.evaluate(() => Math.round(document.querySelector('#akhish').getBoundingClientRect().top))
+      check(Math.abs(top) < 80, `boiling over carries on to «آخیش» (its top at ${top}px)`)
+    }
+    await page.click('.shake-btn')
     await scrollToScene(page, '#finale', 0)
     await page.waitForTimeout(1500)
     await page.click('.open-btn')

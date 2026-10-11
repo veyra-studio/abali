@@ -33,6 +33,8 @@ export interface Experience {
   table: Table | null
   /** Builds the landscape and the table (lazy chunks). Safe to call repeatedly. */
   prepare(which: 'landscape' | 'table'): Promise<void>
+  /** What is under a point of the screen (CSS px) in the studio: the bottle, an ice cube, or nothing. */
+  pick(x: number, y: number): ReturnType<Studio['pick']>
   dispose(): void
 }
 
@@ -65,6 +67,8 @@ export function createExperience(stage: Stage): Experience {
   const veil = createVeil()
 
   const pending = new Map<string, Promise<void>>()
+  const raycaster = new THREE.Raycaster()
+  const ndc = new THREE.Vector2()
   const exp: Experience = {
     layer,
     studio,
@@ -93,6 +97,12 @@ export function createExperience(stage: Stage): Experience {
         pending.set(which, p)
       }
       return p
+    },
+    pick(x, y) {
+      if (exp.world !== 'studio') return null
+      ndc.set((x / layer.width) * 2 - 1, -(y / layer.height) * 2 + 1)
+      raycaster.setFromCamera(ndc, camera)
+      return studio.pick(raycaster.ray)
     },
     dispose() {
       studio.dispose()
