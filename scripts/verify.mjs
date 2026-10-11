@@ -236,6 +236,16 @@ try {
         return { x: ((v.x + 1) / 2) * innerWidth, y: ((1 - v.y) / 2) * innerHeight, pieces: exp.studio.ice.group.children.filter((o) => o.isMesh && o.visible).length }
       })
     const cubeAt = await cube()
+    // Count the chips' strikes on the floor (each one sounds): a few, then silence.
+    await page.evaluate(() => {
+      const studio = window.__abali.experience.studio
+      window.__strikes = []
+      const prev = studio.onChipHit
+      studio.onChipHit = (s) => {
+        window.__strikes.push(performance.now())
+        prev?.(s)
+      }
+    })
     for (let k = 0; k < 5; k++) {
       const at = await cube()
       await page.mouse.click(at.x, at.y)
@@ -244,6 +254,12 @@ try {
     await page.waitForTimeout(1500)
     const pieces = await page.evaluate(() => window.__abali.experience.studio.ice.group.children.filter((o) => o.isMesh && o.visible).length)
     check(pieces > cubeAt.pieces, `five taps break an ice cube into chips (${cubeAt.pieces} → ${pieces} pieces of ice)`)
+    const strikes = await page.evaluate(async () => {
+      const before = window.__strikes.length
+      await new Promise((r) => setTimeout(r, 1500))
+      return { total: window.__strikes.length, later: window.__strikes.length - before }
+    })
+    check(strikes.total > 0 && strikes.total <= 18 && strikes.later === 0, `the chips land and go quiet (${strikes.total} strikes, ${strikes.later} after they settle)`)
     // Shake: fast pointer movement inside «پیس» builds pressure until it boils over.
     await scrollToScene(page, '#pis', 0.55)
     await page.waitForTimeout(1500)
