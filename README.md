@@ -41,7 +41,7 @@ VEYRA_CORE_SRC=../veyra-core npm run dev   # live-develop the engine too
 npm run build                    # typecheck + production build into dist/ (base /abali/)
 npm run preview                  # serve dist at http://localhost:4173/abali/
 npm run verify                   # end-to-end checks + screenshots of the production build
-npm run verify -- --gpu          # same, rendered on the GPU (macOS)
+npm run verify -- --gpu          # same, rendered on the GPU (Metal on macOS, Direct3D on Windows)
 npm run engine:update            # move to the newest engine release
 ```
 
@@ -70,7 +70,9 @@ scripts/                verify.mjs (browser checks), engine-stamp.mjs (writes di
 
 ## Accessibility and performance
 
-Real headings and text in the DOM (the canvas is decorative); skip link; every interaction has a keyboard path (shake button, open button); sound is on by default (it starts at the first click, tap or key, as browsers require; turning it off is remembered) and both toggles report their state; reduced motion disables smoothing, entrances, pointer tilt, the word stretch and the drop animations; without WebGL, a drawn bottle, mountains and sofreh take over. The terrain is baked in a worker; the mountains and the table are built after the hero has loaded; the table re-renders its shadows only while dishes move; the adaptive quality governor lowers resolution on slow devices, and every world follows its tier as it changes: the low tier drops the floor reflection, the bottle's transmission, the film grain and the blurs, and traces the ice more simply. Worlds built ahead of time are warmed up so reaching them doesn't stall a frame.
+Real headings and text in the DOM (the canvas is decorative); skip link; every interaction has a keyboard path (shake button, open button); sound is on by default (it starts at the first click, tap or key, as browsers require; turning it off is remembered) and both toggles report their state; reduced motion disables smoothing, entrances, pointer tilt, the word stretch and the drop animations; without WebGL, a drawn bottle, mountains and sofreh take over. The terrain is baked in a worker; the mountains and the table are built after the hero has loaded; the table re-renders its shadows only while dishes move; the adaptive quality governor lowers resolution on slow devices, and every world follows its tier as it changes: the low tier drops the floor reflection, the bottle's transmission, the film grain and the blurs, and traces the ice more simply. Worlds built ahead of time are warmed up so reaching them doesn't stall a frame, and the governor holds its judgement while the page loads and builds them, so a capable device keeps its tier. On phones the canvas keeps the large viewport's height, so the address bar sliding in and out doesn't resize it; if the phone takes the GPU back (a page in the background), the drawn fallback stands in and the film's light is rendered again when it returns. The Nastaliq face is cut down to the letters set in it (22 KB instead of 234).
+
+Commissions — a site like this one: [itsmetti@proton.me](mailto:itsmetti@proton.me).
 
 ## Deploy
 

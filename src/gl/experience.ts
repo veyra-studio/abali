@@ -41,8 +41,10 @@ export interface Experience {
 export function createExperience(stage: Stage): Experience {
   // three.js's milky fill behind transmissive glass is kept on purpose: it
   // gives the cold bottle its frosted white look (the ice doesn't use
-  // transmission, so it isn't affected).
-  const layer = stage.use(threeLayer({ fov: 15, zIndex: 1, maxDpr: 2, near: 2, autoRender: false, renderer: { antialias: stage.quality?.tier.value !== 'low' } }))
+  // transmission, so it isn't affected). The canvas keeps the large
+  // viewport's height: a phone's address bar sliding in and out doesn't
+  // resize it (chapters place things with `layer.height`).
+  const layer = stage.use(threeLayer({ fov: 15, zIndex: 1, maxDpr: 2, near: 2, autoRender: false, stableHeight: true, renderer: { antialias: stage.quality?.tier.value !== 'low' } }))
   // Read the tier after the layer: on a software renderer it starts low.
   const tier: Quality = stage.quality?.tier.value ?? 'medium'
   const { renderer, scene, camera } = layer
@@ -65,6 +67,30 @@ export function createExperience(stage: Stage): Experience {
     exp.table?.setQuality(t)
   })
   const veil = createVeil()
+
+  // A lost WebGL context (phones take the GPU back from pages in the
+  // background): when it returns, what was rendered on the GPU — the
+  // studio's and the table's light — is rendered again and the shadows are
+  // redrawn. If it doesn't come back soon, the drawn fallback stands in.
+  layer.onRestore(() => {
+    studio.restore(renderer)
+    exp.table?.restore(renderer)
+  })
+  let fallbackTimer = 0
+  let fellBack = false
+  layer.lost.subscribe((lost) => {
+    window.clearTimeout(fallbackTimer)
+    const html = document.documentElement
+    if (lost) {
+      fallbackTimer = window.setTimeout(() => {
+        fellBack = true
+        html.classList.add('no-webgl')
+      }, 3000)
+    } else if (fellBack) {
+      fellBack = false
+      html.classList.remove('no-webgl')
+    }
+  })
 
   const pending = new Map<string, Promise<void>>()
   const raycaster = new THREE.Raycaster()
@@ -94,6 +120,9 @@ export function createExperience(stage: Stage): Experience {
                 await warmUp(renderer, table.scene, table.camera)
                 exp.table = table
               })
+        // Building a world is slow on purpose: the quality governor waits
+        // (a capable device must not lose its tier to it).
+        stage.quality?.hold(p)
         pending.set(which, p)
       }
       return p

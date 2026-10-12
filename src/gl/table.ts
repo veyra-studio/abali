@@ -36,6 +36,8 @@ export interface Table {
   update(dt: number, time: number, width: number, height: number, reduced: boolean): void
   /** Follows the quality tier: the window light's shadow map shrinks on lower tiers. */
   setQuality(quality: Quality): void
+  /** After a lost WebGL context came back: renders the table's and the steel's light again and redraws the shadows. */
+  restore(renderer: THREE.WebGLRenderer): void
   dispose(): void
 }
 
@@ -57,7 +59,8 @@ interface Dish {
 export async function createTable(renderer: THREE.WebGLRenderer, quality: Quality): Promise<Table> {
   const scene = new THREE.Scene()
   scene.background = new THREE.Color('#e9e0cc')
-  scene.environment = studioEnvironment(renderer, { lights: studioLights.soft, walls: ['#cfc7b8', '#8f877a'] })
+  const room = (r: THREE.WebGLRenderer) => studioEnvironment(r, { lights: studioLights.soft, walls: ['#cfc7b8', '#8f877a'] })
+  scene.environment = room(renderer)
   scene.environmentIntensity = 0.72
   renderer.shadowMap.enabled = true
   renderer.shadowMap.type = THREE.VSMShadowMap
@@ -154,7 +157,7 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
 
   // A spoon and a fork, set down just after the plate: polished steel,
   // reflecting a room of its own.
-  const steelEnv = steelEnvironment(renderer)
+  let steelEnv = steelEnvironment(renderer)
   const spoon = createSpoon(steelEnv)
   const fork = createFork(steelEnv)
   disposers.push(spoon.dispose, fork.dispose, () => steelEnv.dispose())
@@ -173,8 +176,9 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
   add(sides.bread, -26, -29, 0.12, 0.6, 5)
   add(sides.herbs, 0, -20, 0.5, 0.66, 5)
 
-  // The last two: what was missing.
-  const bottle = createBottle({ quality })
+  // The last two: what was missing. Seen from above, the bottle is a few
+  // hundred pixels long: built small (droplets and label at that size).
+  const bottle = createBottle({ quality, small: true })
   bottle.setScale(BOTTLE_CM)
   // Seen from above, refraction barely shows: plain see-through glass spares
   // the table a transmission pass.
@@ -279,8 +283,23 @@ export async function createTable(renderer: THREE.WebGLRenderer, quality: Qualit
     frame.right = x + across
     frame.bottom = z + visible / 2
   }
+  const restore = (r: THREE.WebGLRenderer) => {
+    // Both rooms were rendered into targets: gone with the context.
+    const oldRoom = scene.environment
+    scene.environment = room(r)
+    oldRoom?.dispose()
+    const oldSteel = steelEnv
+    steelEnv = steelEnvironment(r)
+    cutlery.traverse((o) => {
+      if (o instanceof THREE.Mesh && (o.material as THREE.MeshPhysicalMaterial).envMap === oldSteel) (o.material as THREE.MeshPhysicalMaterial).envMap = steelEnv
+    })
+    oldSteel.dispose()
+    // Shadows and the contact shadow are drawn again over the next frames.
+    settleFrames = 3
+  }
   const self: Table = {
     setQuality,
+    restore,
     scene,
     camera,
     progress: 0,
