@@ -94,7 +94,11 @@ if (supportsWebGL2()) {
 
 stage.scroll?.lock()
 window.scrollTo(0, 0)
-await preload.done({ minDuration: reduced ? 0 : 1.4 })
+const loaded = preload.done({ minDuration: reduced ? 0 : 1.4 })
+// Loading is slow on purpose (fonts, the studio built and compiled): its
+// frames say nothing about the device, so the quality governor waits.
+stage.quality?.hold(loaded)
+await loaded
 await loader.finish(stage, () => sound.taq())
 stage.scroll?.unlock()
 html.classList.add('is-ready')

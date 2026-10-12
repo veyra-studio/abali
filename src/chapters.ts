@@ -53,7 +53,10 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
   const html = document.documentElement
   const reduced = () => stage.reducedMotion.value
   const vw = () => stage.viewport.w
-  const vh = () => stage.viewport.h
+  // The canvas's height: the large viewport's (it holds still while a
+  // phone's address bar slides in and out), so placements in CSS px agree
+  // with the pixel camera — as CSS `vh` does on phones.
+  const vh = () => exp?.layer.height ?? stage.viewport.h
   const mobile = () => vw() < 760
   /** Width of the picture's frame: at most twice the height (CSS `--frame`). */
   const frame = () => Math.min(vw(), 2 * vh())
@@ -366,9 +369,13 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
       }
     })
   }
-  // A mouse over something to tap shows it.
+  // A mouse over something to tap shows it (picked again only when the
+  // pointer, the scroll or the world changed).
   const finePointer = window.matchMedia('(pointer: fine)')
-  let lastPointer = ''
+  let pickedX = Number.NaN
+  let pickedY = Number.NaN
+  let pickedScroll = Number.NaN
+  let pickedWorld: World | null = null
   let canTap = false
 
   // ------------------------------------------------------------------
@@ -388,9 +395,14 @@ export function initChapters(stage: Stage, exp: Experience | null, sound: AbaliS
     hookTable()
     hookStudio()
     if (exp && finePointer.matches && stage.pointer) {
-      const key = `${Math.round(stage.pointer.x)},${Math.round(stage.pointer.y)},${exp.world},${Math.round(stage.scrollY)}`
-      if (key !== lastPointer) {
-        lastPointer = key
+      const x = Math.round(stage.pointer.x)
+      const y = Math.round(stage.pointer.y)
+      const scroll = Math.round(stage.scrollY)
+      if (x !== pickedX || y !== pickedY || scroll !== pickedScroll || exp.world !== pickedWorld) {
+        pickedX = x
+        pickedY = y
+        pickedScroll = scroll
+        pickedWorld = exp.world
         const over = stage.pointer.inside && exp.pick(stage.pointer.x, stage.pointer.y) !== null
         if (over !== canTap) html.classList.toggle('can-tap', (canTap = over))
       }

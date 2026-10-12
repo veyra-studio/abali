@@ -90,6 +90,8 @@ export interface Studio {
    * more simply.
    */
   setQuality(quality: Quality): void
+  /** After a lost WebGL context came back: renders the studio's light again and redraws the contact shadow. */
+  restore(renderer: THREE.WebGLRenderer): void
   dispose(): void
 }
 
@@ -188,7 +190,21 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
   let idleClock = 0
   let shiver = 0
 
-  let shadowKey = ''
+  // The contact shadow is redrawn only when something that casts moves,
+  // tilts or is scaled (a turned bottle casts the same shadow as it spins):
+  // the pose it was last drawn for, compared value by value — no strings
+  // built every frame.
+  const shadowPose = new Float64Array(12).fill(Number.NaN)
+  let poseSlot = 0
+  let poseMoved = false
+  const pose = (v: number) => {
+    if (shadowPose[poseSlot] !== v) {
+      shadowPose[poseSlot] = v
+      poseMoved = true
+    }
+    poseSlot++
+  }
+  const milli = (v: number) => Math.round(v * 1000)
 
   // --- The cap -----------------------------------------------------------
   // On the bottle it is a child of the bottle. Once it snaps off it is a
@@ -199,7 +215,8 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
   const HALF = (BOTTLE.capTop - BOTTLE.capBottom) / 2
   const CENTER = (BOTTLE.capTop + BOTTLE.capBottom) / 2
   const G = 42 // ≈ 9 m/s² at 21.6 cm per unit
-  type CapPhase = 'on' | 'prying' | 'free' | 'settling' | 'resting' | 'rewind'
+  const PHASES = ['on', 'prying', 'free', 'settling', 'resting', 'rewind'] as const
+  type CapPhase = (typeof PHASES)[number]
   let phase: CapPhase = 'on'
   // (Read through a function where a step may have changed it.)
   const current = (): CapPhase => phase
@@ -581,16 +598,31 @@ export function createStudio(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
       if (!state.visible) return
       if (floor && floor.mesh.visible) floor.update(renderer, scene, camera)
       if (state.floor > 0.01) {
-        // A turned bottle casts the same shadow as it spins: re-render only
-        // when something that casts moves, tilts or is scaled.
         const r = bottle.group.rotation
         const c = capRig.position
-        const key = `${Math.round(state.x)}|${Math.round(state.baseY)}|${Math.round(state.scale)}|${r.x.toFixed(3)}|${r.z.toFixed(3)}|${phase}|${c.x.toFixed(3)}|${c.y.toFixed(3)}|${c.z.toFixed(3)}|${capRig.quaternion.w.toFixed(3)}|${ice.group.scale.x.toFixed(3)}|${ice.group.children.length}`
-        if (key !== shadowKey) {
-          shadowKey = key
-          shadow.update(renderer, scene)
-        }
+        poseSlot = 0
+        poseMoved = false
+        pose(Math.round(state.x))
+        pose(Math.round(state.baseY))
+        pose(Math.round(state.scale))
+        pose(milli(r.x))
+        pose(milli(r.z))
+        pose(PHASES.indexOf(phase))
+        pose(milli(c.x))
+        pose(milli(c.y))
+        pose(milli(c.z))
+        pose(milli(capRig.quaternion.w))
+        pose(milli(ice.group.scale.x))
+        pose(ice.group.children.length)
+        if (poseMoved) shadow.update(renderer, scene)
       }
+    },
+    restore(renderer) {
+      // The environment was rendered into a target: gone with the context.
+      const old = scene.environment
+      scene.environment = studioEnvironment(renderer)
+      old?.dispose()
+      shadowPose.fill(Number.NaN)
     },
     dispose() {
       bottle.dispose()

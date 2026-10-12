@@ -236,16 +236,25 @@ export interface Bottle {
   dispose(): void
 }
 
-export function createBottle(options: { quality: 'low' | 'medium' | 'high' }): Bottle {
+export function createBottle(options: {
+  quality: 'low' | 'medium' | 'high'
+  /**
+   * Seen small (the sofreh's bottle, from above): smaller droplet maps and
+   * label, fewer segments — a fraction of the memory and of the time it
+   * takes to build, for the same picture at that size.
+   */
+  small?: boolean
+}): Bottle {
   const q = options.quality
-  const segments = q === 'low' ? 72 : q === 'medium' ? 112 : 160
+  const small = options.small ?? false
+  const segments = small ? 64 : q === 'low' ? 72 : q === 'medium' ? 112 : 160
   const group = new THREE.Group()
   const body = new THREE.Group()
   group.add(body)
   const { outer, inner, glass: glassOutline } = bottleProfiles()
 
   // Condensation: droplets and mist on the cold glass.
-  const maps = condensationMaps({ size: q === 'high' ? 1024 : 512, seed: 5, mist: 0.7, runs: 0.03, roughness: [0.07, 0.4] })
+  const maps = condensationMaps({ size: small ? 256 : q === 'high' ? 1024 : 512, seed: 5, mist: 0.7, runs: 0.03, roughness: [0.07, 0.4] })
   const dropNormal = new THREE.CanvasTexture(maps.normal)
   const dropRough = new THREE.CanvasTexture(maps.roughness)
   for (const t of [dropNormal, dropRough]) {
@@ -327,9 +336,9 @@ export function createBottle(options: { quality: 'low' | 'medium' | 'high' }): B
     to: BOTTLE.labelTop,
     arc: BOTTLE.labelArc,
     lift: 0.0011,
-    segments: [q === 'low' ? 48 : 96, 16],
+    segments: [q === 'low' || small ? 48 : 96, 16],
   })
-  const labelCanvas = drawLabel({ aspect: band.width / band.height, halfWidthAt: band.halfWidthAt }, q === 'low' ? 1024 : 2048)
+  const labelCanvas = drawLabel({ aspect: band.width / band.height, halfWidthAt: band.halfWidthAt }, small ? 768 : q === 'low' ? 1024 : 2048)
   const labelTexture = new THREE.CanvasTexture(labelCanvas)
   labelTexture.colorSpace = THREE.SRGBColorSpace
   labelTexture.anisotropy = 8
@@ -349,7 +358,7 @@ export function createBottle(options: { quality: 'low' | 'medium' | 'high' }): B
   body.add(labelMesh)
 
   // Crown cap — navy enamel over tin plate, with a pale liner inside.
-  const capSegments = 21 * (q === 'low' ? 8 : 14)
+  const capSegments = 21 * (q === 'low' || small ? 8 : 14)
   const wear = capWearTexture()
   const capMat = new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(colors.cap),
