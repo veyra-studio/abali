@@ -2,7 +2,7 @@
 // GitHub Pages base path (/abali/).
 //
 //   npm run build && npm run verify            # portable: WebGL on SwiftShader
-//   npm run build && npm run verify -- --gpu   # on a Mac: render on the GPU (Metal)
+//   npm run build && npm run verify -- --gpu   # render on the GPU (Metal on a Mac, Direct3D on Windows)
 //
 // Checks: no console errors or failed requests, Persian RTL semantics and
 // copy, keyboard entry point, every chapter and both lazily built worlds
@@ -14,13 +14,16 @@
 // SwiftShader WebGL is slow: timings here are not performance data.
 import { spawn } from 'node:child_process'
 import { mkdirSync, rmSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 
 const PORT = 4173
 const BASE = `http://localhost:${PORT}/abali/`
-const OUT = new URL('../verify-output/', import.meta.url).pathname
+const OUT = fileURLToPath(new URL('../verify-output/', import.meta.url))
 const GPU = process.argv.includes('--gpu')
-const GL_ARGS = GPU ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']
+const WINDOWS = process.platform === 'win32'
+const GPU_ANGLE = process.platform === 'darwin' ? 'metal' : WINDOWS ? 'd3d11' : 'default'
+const GL_ARGS = GPU ? [`--use-angle=${GPU_ANGLE}`, '--ignore-gpu-blocklist'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']
 const SETTLE = GPU ? 1400 : 2600
 // Start clean, so every screenshot left here is from this run.
 rmSync(OUT, { recursive: true, force: true })
@@ -28,15 +31,18 @@ mkdirSync(OUT, { recursive: true })
 
 // Run vite directly in its own process group so the whole tree is stopped
 // afterwards (killing an `npx` wrapper can leave the server running).
-const root = new URL('..', import.meta.url).pathname
+// Windows has no process groups: vite runs as a direct child there.
+const root = fileURLToPath(new URL('..', import.meta.url))
 const server = spawn(process.execPath, [`${root}node_modules/vite/bin/vite.js`, 'preview', '--port', String(PORT), '--strictPort'], {
   cwd: root,
   stdio: 'ignore',
-  detached: true,
+  detached: !WINDOWS,
+  windowsHide: true,
 })
 const stopServer = () => {
   try {
-    process.kill(-server.pid, 'SIGTERM')
+    if (WINDOWS) server.kill()
+    else process.kill(-server.pid, 'SIGTERM')
   } catch {}
 }
 const failures = []
@@ -95,6 +101,11 @@ const scrollToScene = (page, selector, progress) =>
 const worldsReady = (page) =>
   page.waitForFunction(() => window.__abali?.experience?.landscape && window.__abali?.experience?.table, null, { timeout: 120000 })
 const text = (page, sel) => page.$eval(sel, (el) => el.textContent.replace(/\s+/g, ' ').trim())
+/** Waits for `n` frames of the stage (software rendering is slow: frames, not time). */
+const frames = async (page, n) => {
+  const f0 = await page.evaluate(() => window.__abali.stage.ticker.current.frame)
+  await page.waitForFunction((f) => window.__abali.stage.ticker.current.frame >= f, f0 + n, { timeout: 120000 })
+}
 
 try {
   await waitForServer()
@@ -114,6 +125,11 @@ try {
     check(h1 === 'خنکی صدا دارد.', `h1 is the headline in real Persian text (${h1})`)
     check(meta.title.includes('خنکی صدا دارد'), 'document title carries the headline')
     check(meta.disclaimer.includes('غیررسمی') && meta.disclaimer.includes('هیچ ارتباطی'), 'unofficial-concept disclaimer is present')
+    const commission = await page.evaluate(() => {
+      const a = document.querySelector('.site-footer .commission a')
+      return { href: a?.getAttribute('href') ?? '', text: a?.textContent?.trim() ?? '' }
+    })
+    check(commission.text === 'itsmetti@proton.me' && commission.href.startsWith('mailto:itsmetti@proton.me?subject='), `the footer offers a site like this, by mail (${commission.text})`)
     check(meta.webgl && meta.canvas, 'WebGL experience initialised')
     await page.keyboard.press('Tab')
     const focused = await page.evaluate(() => document.activeElement?.className)
@@ -175,6 +191,20 @@ try {
       check(overflow <= 1, `no horizontal overflow (${overflow}px)`)
       await page.waitForTimeout(SETTLE)
       await page.screenshot({ path: `${OUT}mobile-hero.png` })
+      // The address bar slides in (80 px less height, nothing else): the
+      // canvas keeps its size and the camera holds still.
+      const canvas = () =>
+        page.evaluate(() => {
+          const layer = window.__abali.experience.layer
+          return { buffer: `${layer.canvas.width}×${layer.canvas.height}`, distance: layer.camera.position.z }
+        })
+      const before = await canvas()
+      await page.setViewportSize({ width: 390, height: 764 })
+      await frames(page, 3)
+      const bar = await canvas()
+      check(bar.buffer === before.buffer && bar.distance === before.distance, `the address bar sliding in leaves the canvas alone (${before.buffer} → ${bar.buffer})`)
+      await page.setViewportSize({ width: 390, height: 844 })
+      await frames(page, 3)
       await worldsReady(page)
       for (const [name, sel, p] of [
         ['taq', '#taq', 0.62],
@@ -291,6 +321,60 @@ try {
     await page.waitForTimeout(900)
     const label = await text(page, '.open-label')
     check(label === 'تق!', `open → recap cycle works with sound on (button «${label}»)`)
+  })
+
+  // Phones take the GPU back from pages in the background. While it is gone
+  // the drawn fallback stands in; when it returns, the light that lived only
+  // on the GPU (the studio's and the table's environments) is rendered again.
+  await visit(browser, 'Lost WebGL context', { viewport: { width: 1280, height: 800 } }, async (page) => {
+    await worldsReady(page)
+    await page.waitForTimeout(SETTLE)
+    const r = await page.evaluate(async () => {
+      const { stage, experience: exp } = window.__abali
+      const html = document.documentElement
+      // Nothing is drawn meanwhile but the probes.
+      stage.stop()
+      const { renderer, scene, camera } = exp.layer
+      const gl = renderer.getContext()
+      const slot = document.querySelector('.hero-slot').getBoundingClientRect()
+      // The bottle's brightness along its axis, drawn and read in one task.
+      const light = () => {
+        exp.studio.prepare(renderer, camera)
+        renderer.render(scene, camera)
+        const dpr = renderer.getPixelRatio()
+        const px = new Uint8Array(4)
+        let sum = 0
+        for (let i = 1; i < 10; i++) {
+          gl.readPixels(Math.round((slot.left + slot.width / 2) * dpr), Math.round((exp.layer.height - (slot.top + (slot.height * i) / 10)) * dpr), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px)
+          sum += px[0] + px[1] + px[2]
+        }
+        return sum
+      }
+      const before = light()
+      const envs = [scene.environment, exp.table.scene.environment]
+      const lose = gl.getExtension('WEBGL_lose_context')
+      const event = (type) => new Promise((resolve) => exp.layer.canvas.addEventListener(type, resolve, { once: true }))
+      let next = event('webglcontextlost')
+      lose.loseContext()
+      await next
+      const lost = exp.layer.lost.value
+      // Still gone after three seconds: the drawn fallback takes over.
+      await new Promise((resolve) => setTimeout(resolve, 3400))
+      const fallback = html.classList.contains('no-webgl')
+      next = event('webglcontextrestored')
+      lose.restoreContext()
+      await next
+      return {
+        lost,
+        fallback,
+        back: !exp.layer.lost.value && !html.classList.contains('no-webgl'),
+        rebuilt: scene.environment !== envs[0] && exp.table.scene.environment !== envs[1],
+        before,
+        after: light(),
+      }
+    })
+    check(r.lost && r.fallback && r.back, `a lost context shows the drawn fallback; the film returns with it (lost ${r.lost}, fallback ${r.fallback}, back ${r.back})`)
+    check(r.rebuilt && r.after > r.before * 0.8, `the studio's and the table's light are rendered again (bottle ${r.before} → ${r.after})`)
   })
 
   await browser.close()
