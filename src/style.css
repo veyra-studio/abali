@@ -1,6 +1,15 @@
-@import '@fontsource-variable/noto-nastaliq-urdu';
 @import '@fontsource/lalezar';
 @import '@fontsource-variable/estedad';
+
+/* Noto Nastaliq Urdu, cut down to the letters set in it («دوغ آبعلی»):
+   22 KB instead of 234. Text set in Nastaliq changes → scripts/subset-nastaliq.mjs. */
+@font-face {
+  font-family: 'Noto Nastaliq Urdu Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400 700;
+  src: url('./fonts/nastaliq-abali.woff2') format('woff2-variations');
+}
 
 /* ------------------------------------------------------------------ */
 /* Tokens — the real product's colors (see src/palette.ts)             */
@@ -867,7 +876,7 @@ html[data-quality='low'] .place {
   max-width: 76rem;
 }
 .footer-mark {
-  grid-row: span 4;
+  grid-row: span 5;
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(2.4rem, 5vw, 4rem);
@@ -884,6 +893,23 @@ html[data-quality='low'] .place {
 }
 .disclaimer {
   color: var(--milk);
+}
+/* Commissions: the studio's address, the first thing under «نوش جان!». */
+.commission {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 2;
+  color: var(--milk);
+}
+.commission a {
+  unicode-bidi: isolate;
+  color: var(--gold);
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 0.3em;
+  overflow-wrap: anywhere;
+}
+.commission a:hover {
+  text-decoration-color: currentColor;
 }
 .footer-links {
   display: flex;
